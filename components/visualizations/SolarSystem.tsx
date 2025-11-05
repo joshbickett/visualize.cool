@@ -209,6 +209,7 @@ export default function SolarSystem({
     if (initialSizeBoost === 250) return 'enhanced';
     return 'custom';
   });
+  const [controlsCollapsed, setControlsCollapsed] = useState(false);
 
   const curveName = useId();
   const sizeModeName = useId();
@@ -307,7 +308,7 @@ export default function SolarSystem({
         setZoom(desiredZoom);
       }
     },
-    [BODIES, bodyByName, bodyPositionAUprime, mapDistanceAU, sizePreset]
+    [BODIES, bodyByName, bodyPositionAUprime, sizePreset]
   );
 
   const drawStarfield = useCallback((ctx: CanvasRenderingContext2D) => {
@@ -822,19 +823,32 @@ export default function SolarSystem({
       />
 
       <div className="ss-hud">
-        <div className="ss-panel">
+        <div className={`ss-panel${controlsCollapsed ? ' ss-panel--collapsed' : ''}`}>
           <div className="ss-brand">
-            <div className="ss-dot" />
-            <div>
-              <h1 className="ss-h1">Solar System Scale</h1>
-              <div className="ss-sub">
-                Pan (drag), Zoom (scroll), Select a planet or press <span className="ss-kbd">Space</span>{' '}
-                to pause.
+            <div className="ss-brand-left">
+              <div className="ss-dot" />
+              <div>
+                <h1 className="ss-h1">Solar System Scale</h1>
+                <div className="ss-sub">
+                  Pan (drag), Zoom (scroll), Select a planet or press <span className="ss-kbd">Space</span>{' '}
+                  to pause.
+                </div>
               </div>
             </div>
+            <button
+              type="button"
+              className="ss-collapse"
+              onClick={() => setControlsCollapsed((prev) => !prev)}
+              aria-expanded={!controlsCollapsed}
+              aria-controls="ss-controls"
+            >
+              {controlsCollapsed ? 'Show controls' : 'Hide controls'}
+            </button>
           </div>
 
-          <div className="ss-controls">
+          {!controlsCollapsed && (
+            <>
+          <div className="ss-controls" id="ss-controls">
             <label>Distance curve</label>
             <div className="ss-row" role="radiogroup" aria-label="Distance curve">
               {(['linear', 'sqrt', 'log'] as DistanceCurve[]).map((value) => (
@@ -980,6 +994,13 @@ export default function SolarSystem({
             multiplier</b> or try a non-linear <b>Distance curve</b> to inspect them more easily.
             Press <span className="ss-kbd">F</span> to fit all.
           </div>
+          </>
+          )}
+          {controlsCollapsed && (
+            <div className="ss-collapsed-hint">
+              Controls hidden · use the toggle to adjust distance curve, size, zoom, and speed.
+            </div>
+          )}
         </div>
 
         <div className="ss-panel ss-right">
@@ -1181,17 +1202,28 @@ const css = `
   color: var(--text);
 }
 .ss-canvas { position: absolute; inset: 0; display: block; background: transparent; }
-.ss-hud { position: absolute; top: 16px; left: 16px; right: 16px; display:flex; gap:16px; align-items:flex-start; pointer-events:none; }
+.ss-hud { position: absolute; top: 16px; left: 16px; right: 16px; display:flex; gap:16px; align-items:flex-start; pointer-events:none; flex-wrap:wrap; }
 .ss-panel {
   pointer-events:auto; background:var(--panel); border:1px solid var(--border);
   box-shadow:var(--shadow); border-radius: var(--radius); padding: 14px 16px;
   backdrop-filter: blur(8px) saturate(120%);
+  width: min(100%, 380px);
 }
+.ss-panel--collapsed { padding: 12px 14px; }
 .ss-right { margin-left:auto; max-width:300px; }
-.ss-brand { display:flex; align-items:center; gap:10px; }
+.ss-brand { display:flex; align-items:flex-start; gap:12px; justify-content:space-between; }
+.ss-brand-left { display:flex; align-items:center; gap:10px; }
 .ss-dot { width:10px; height:10px; border-radius:50%; background: linear-gradient(180deg, var(--accent), var(--accent2)); box-shadow: 0 0 12px rgba(106,227,255,0.7); }
 .ss-h1 { font-size:16px; font-weight:600; margin:0; }
 .ss-sub { font-size:12px; color:var(--muted); margin-top:4px; }
+.ss-collapse {
+  border:1px solid rgba(255,255,255,0.14); border-radius:999px; padding:4px 10px;
+  background:rgba(255,255,255,0.06); color:var(--text); font-size:11px;
+  letter-spacing:0.04em; text-transform:uppercase; cursor:pointer;
+  transition:background 0.2s ease, border-color 0.2s ease;
+}
+.ss-collapse:hover { background:rgba(106,227,255,0.14); border-color:rgba(106,227,255,0.35); }
+.ss-collapsed-hint { font-size:12px; color:var(--muted); margin-top:10px; }
 .ss-controls { display:grid; grid-template-columns: 1fr 1fr; gap:10px 14px; align-items:center; margin-top:10px; }
 .ss-controls label { font-size:12px; color:var(--muted); }
 .ss-controls input[type="range"] { width:100%; max-width:240px; accent-color: var(--accent); }

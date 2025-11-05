@@ -74,7 +74,7 @@ export default function SolarSystemPage() {
           <li>Toggle fullscreen for an immersive view, especially on larger displays.</li>
           <li>Use the extended zoom range to dive into inner-planet detail without losing scale.</li>
           <li>Switch between true scale and enhanced size modes; the multiplier always maintains ratios.</li>
-          <li>Slow orbital speed to "real time" or accelerate centuries per second with the responsive slider.</li>
+          <li>Slow orbital speed to &ldquo;real time&rdquo; or accelerate centuries per second with the responsive slider.</li>
           <li>Press numbers <span className="ss-kbd">1</span>–<span className="ss-kbd">9</span> to jump directly to bodies.</li>
           <li>Toggle orbit lines, labels, and orbital trails to reveal different perspectives.</li>
         </ul>
