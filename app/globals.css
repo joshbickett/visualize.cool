@@ -48,6 +48,14 @@ button {
   font: inherit;
 }
 
+code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  background: rgba(255, 255, 255, 0.08);
+  border-radius: 6px;
+  padding: 2px 6px;
+  color: rgba(240, 244, 255, 0.85);
+}
+
 .app-shell {
   display: flex;
   flex-direction: column;

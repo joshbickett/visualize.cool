@@ -49,14 +49,21 @@ type SolarSystemProps = {
   style?: React.CSSProperties;
 };
 
+type SizePreset = 'accurate' | 'enhanced' | 'custom';
+
 const AU_KM = 149_597_870.7;
+const ZOOM_MIN = 0.02;
+const ZOOM_MAX = 400;
+const ZOOM_SLIDER_EXP = 3.4;
+const SPEED_MIN = 0;
+const SPEED_MAX = 20_000;
 
 export default function SolarSystem({
   height = '100vh',
   initialCurve = 'linear',
   initialZoom = 1,
-  initialSizeBoost = 250,
-  initialSpeed = 600,
+  initialSizeBoost = 1,
+  initialSpeed = 250,
   className,
   style
 }: SolarSystemProps) {
@@ -197,8 +204,14 @@ export default function SolarSystem({
   const [focus, setFocus] = useState('Sun');
   const [paused, setPaused] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
+  const [sizePreset, setSizePreset] = useState<SizePreset>(() => {
+    if (initialSizeBoost === 1) return 'accurate';
+    if (initialSizeBoost === 250) return 'enhanced';
+    return 'custom';
+  });
 
   const curveName = useId();
+  const sizeModeName = useId();
 
   const mapDistanceAU = useCallback(
     (r: number) => {
@@ -245,7 +258,8 @@ export default function SolarSystem({
     const state = stateRef.current;
     const pixelsPerAU = state.baseScale * state.zoom;
     const truePx = (body.radius_km / AU_KM) * pixelsPerAU;
-    return Math.max(1, truePx * state.sizeBoost);
+    const scaled = truePx * state.sizeBoost;
+    return state.sizeBoost <= 1 ? scaled : Math.max(1, scaled);
   }, []);
 
   const fitAll = useCallback(() => {
@@ -266,13 +280,17 @@ export default function SolarSystem({
 
       const pos = bodyPositionAUprime(target, state.timeDays);
       const { w, h } = sizeRef.current;
-      let desiredZoom = state.zoom;
-      if (target.name === 'Sun') {
-        desiredZoom = 1.2;
-      } else {
-        const rAUprime = mapDistanceAU(target.sma_au);
-        const targetPxRadius = Math.min(w, h) * 0.3;
-        desiredZoom = clamp(targetPxRadius / (rAUprime * state.baseScale), 0.3, 8);
+      const viewportMin = Math.max(320, Math.min(w, h));
+      const radiusAU = target.radius_km / AU_KM;
+      const bodyScale = Math.max(radiusAU * state.baseScale * state.sizeBoost, 1e-9);
+      const preferredPx = target.name === 'Sun'
+        ? Math.max(viewportMin * 0.28, 220)
+        : Math.max(150, Math.min(viewportMin * 0.35, 280));
+      let desiredZoom = clamp(preferredPx / bodyScale, ZOOM_MIN, ZOOM_MAX);
+
+      if (sizePreset === 'accurate' && target.name !== 'Sun') {
+        // For tiny inner planets, bias further in to ensure visibility.
+        desiredZoom = clamp(desiredZoom * 1.15, ZOOM_MIN, ZOOM_MAX);
       }
 
       if (animate) {
@@ -289,7 +307,7 @@ export default function SolarSystem({
         setZoom(desiredZoom);
       }
     },
-    [BODIES, bodyByName, bodyPositionAUprime, mapDistanceAU]
+    [BODIES, bodyByName, bodyPositionAUprime, mapDistanceAU, sizePreset]
   );
 
   const drawStarfield = useCallback((ctx: CanvasRenderingContext2D) => {
@@ -311,13 +329,14 @@ export default function SolarSystem({
     ctx.globalAlpha = 1;
   }, []);
 
-  const drawSunGlow = useCallback((ctx: CanvasRenderingContext2D, px: number, py: number) => {
-    const gradient = ctx.createRadialGradient(px, py, 0, px, py, 200);
+  const drawSunGlow = useCallback((ctx: CanvasRenderingContext2D, px: number, py: number, radius: number) => {
+    const glowRadius = Math.max(radius * 60, 140);
+    const gradient = ctx.createRadialGradient(px, py, 0, px, py, glowRadius);
     gradient.addColorStop(0, 'rgba(255,220,120,0.35)');
     gradient.addColorStop(1, 'rgba(255,165,60,0)');
     ctx.fillStyle = gradient;
     ctx.beginPath();
-    ctx.arc(px, py, 200, 0, Math.PI * 2);
+    ctx.arc(px, py, glowRadius, 0, Math.PI * 2);
     ctx.fill();
   }, []);
 
@@ -374,7 +393,7 @@ export default function SolarSystem({
       const point = toScreen(planetPos.x, planetPos.y);
       const radius = planetPixelRadius(body);
 
-      if (body.name === 'Sun') drawSunGlow(ctx, point.x, point.y);
+      if (body.name === 'Sun') drawSunGlow(ctx, point.x, point.y, radius);
 
       const gradient = ctx.createRadialGradient(
         point.x - radius * 0.3,
@@ -546,8 +565,8 @@ export default function SolarSystem({
       event.preventDefault();
       const state = stateRef.current;
       const { zoom: zoomPrev } = state;
-      const delta = Math.sign(event.deltaY) * -0.1;
-      const zoomNext = clamp(zoomPrev * (1 + delta), 0.3, 8);
+      const delta = Math.sign(event.deltaY) * -0.08;
+      const zoomNext = clamp(zoomPrev * (1 + delta), ZOOM_MIN, ZOOM_MAX);
       if (zoomNext === zoomPrev) return;
 
       const rect = canvas.getBoundingClientRect();
@@ -659,21 +678,55 @@ export default function SolarSystem({
   };
 
   const setZoomBoth = (value: number | string) => {
-    const next = clamp(Number(value), 0.3, 8);
+    const next = clamp(Number(value), ZOOM_MIN, ZOOM_MAX);
     setZoom(next);
     stateRef.current.zoom = next;
   };
 
-  const setSizeBoostBoth = (value: number | string) => {
-    const next = clamp(Number(value), 1, 2000);
+  const handleZoomSlider = (value: number | string) => {
+    const slider = Number(value);
+    const actual = sliderToZoom(slider);
+    setZoomBoth(actual);
+  };
+
+  const applySizeBoost = (value: number, preset: SizePreset) => {
+    const next = clamp(value, 0.1, 2000);
     setSizeBoost(next);
     stateRef.current.sizeBoost = next;
+    setSizePreset(preset);
+  };
+
+  const setSizeBoostBoth = (value: number | string) => {
+    const next = Number(value);
+    const preset =
+      Math.abs(next - 1) < 0.001
+        ? 'accurate'
+        : Math.abs(next - 250) < 0.001
+        ? 'enhanced'
+        : 'custom';
+    applySizeBoost(next, preset);
+  };
+
+  const handleSizePreset = (preset: SizePreset) => {
+    if (preset === 'accurate') {
+      applySizeBoost(1, preset);
+    } else if (preset === 'enhanced') {
+      applySizeBoost(250, preset);
+    } else {
+      applySizeBoost(sizeBoost, 'custom');
+    }
   };
 
   const setSpeedBoth = (value: number | string) => {
-    const next = clamp(Number(value), 0, 20_000);
+    const next = clamp(Number(value), SPEED_MIN, SPEED_MAX);
     setSpeed(next);
     stateRef.current.speed = next;
+  };
+
+  const handleSpeedSlider = (value: number | string) => {
+    const slider = Number(value);
+    const actual = sliderToSpeed(slider);
+    setSpeedBoth(actual);
   };
 
   const setShowOrbitsBoth = (checked: boolean) => {
@@ -707,8 +760,7 @@ export default function SolarSystem({
   const resetAll = () => {
     const state = stateRef.current;
     state.zoom = 1;
-    state.sizeBoost = 250;
-    state.speed = 600;
+    state.speed = initialSpeed;
     state.curve = 'linear';
     state.camera.x = 0;
     state.camera.y = 0;
@@ -716,8 +768,8 @@ export default function SolarSystem({
     state.paused = false;
     state.lastFrameMs = 0;
     setZoom(1);
-    setSizeBoost(250);
-    setSpeed(600);
+    applySizeBoost(1, 'accurate');
+    setSpeed(initialSpeed);
     setCurve('linear');
     setFocus('Sun');
     setPaused(false);
@@ -745,6 +797,16 @@ export default function SolarSystem({
       periodYears: body.period_days === Number.POSITIVE_INFINITY ? null : body.period_days / 365.25
     };
   }, [BODIES, bodyByName, focus]);
+
+  const sizeDescriptor = useMemo(() => {
+    if (sizePreset === 'accurate') return 'True scale (x1.0)';
+    const label = `x${formatNumber(sizeBoost)}`;
+    if (sizePreset === 'enhanced') return `Enhanced (${label})`;
+    return `Custom (${label})`;
+  }, [sizeBoost, sizePreset]);
+
+  const zoomDescriptor = useMemo(() => formatZoom(zoom), [zoom]);
+  const speedDescriptor = useMemo(() => formatSpeed(speed), [speed]);
 
   return (
     <div
@@ -790,37 +852,86 @@ export default function SolarSystem({
             </div>
 
             <label htmlFor="ss-zoom">Zoom</label>
-            <input
-              id="ss-zoom"
-              type="range"
-              min="0.3"
-              max="8"
-              step="0.01"
-              value={zoom}
-              onChange={(event) => setZoomBoth(event.target.value)}
-            />
+            <div className="ss-sliderwrap">
+              <input
+                id="ss-zoom"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={zoomToSlider(zoom)}
+                onChange={(event) => handleZoomSlider(event.target.value)}
+              />
+              <div className="ss-meta" aria-live="polite">
+                {zoomDescriptor}
+              </div>
+            </div>
 
-            <label htmlFor="ss-size">Size exaggeration</label>
-            <input
-              id="ss-size"
-              type="range"
-              min="1"
-              max="2000"
-              step="1"
-              value={sizeBoost}
-              onChange={(event) => setSizeBoostBoth(event.target.value)}
-            />
+            <label htmlFor="ss-size-mode">Size mode</label>
+            <div className="ss-row ss-segment" id="ss-size-mode" role="radiogroup" aria-label="Size scale mode">
+              {([
+                { value: 'accurate', label: 'True scale' },
+                { value: 'enhanced', label: 'Enhanced' }
+              ] as Array<{ value: SizePreset; label: string }>).map((option) => (
+                <label
+                  key={option.value}
+                  className={`ss-segment__option${sizePreset === option.value ? ' is-active' : ''}`}
+                >
+                  <input
+                    type="radio"
+                    name={sizeModeName}
+                    value={option.value}
+                    checked={sizePreset === option.value}
+                    onChange={() => handleSizePreset(option.value)}
+                  />
+                  {option.label}
+                </label>
+              ))}
+              <label
+                className={`ss-segment__option${sizePreset === 'custom' ? ' is-active' : ''}`}
+              >
+                <input
+                  type="radio"
+                  name={sizeModeName}
+                  value="custom"
+                  checked={sizePreset === 'custom'}
+                  onChange={() => handleSizePreset('custom')}
+                />
+                Custom
+              </label>
+            </div>
 
-            <label htmlFor="ss-speed">Days / second</label>
-            <input
-              id="ss-speed"
-              type="range"
-              min="0"
-              max="20000"
-              step="10"
-              value={speed}
-              onChange={(event) => setSpeedBoth(event.target.value)}
-            />
+            <label htmlFor="ss-size">Size multiplier</label>
+            <div className="ss-sliderwrap">
+              <input
+                id="ss-size"
+                type="range"
+                min="0.1"
+                max="2000"
+                step="0.1"
+                value={sizeBoost}
+                onChange={(event) => setSizeBoostBoth(event.target.value)}
+              />
+              <div className="ss-meta" aria-live="polite">
+                {sizePreset === 'accurate' ? 'x1.0 · true scale' : `x${formatNumber(sizeBoost)}${sizePreset === 'enhanced' ? ' · enhanced' : ''}`}
+              </div>
+            </div>
+
+            <label htmlFor="ss-speed">Orbital speed</label>
+            <div className="ss-sliderwrap">
+              <input
+                id="ss-speed"
+                type="range"
+                min="0"
+                max="100"
+                step="1"
+                value={speedToSlider(speed)}
+                onChange={(event) => handleSpeedSlider(event.target.value)}
+              />
+              <div className="ss-meta" aria-live="polite">
+                {speedDescriptor}
+              </div>
+            </div>
           </div>
 
           <div className="ss-toggles">
@@ -865,8 +976,9 @@ export default function SolarSystem({
           </div>
 
           <div className="ss-legend">
-            True-scale distances make inner planets hard to see. Use <b>Size exaggeration</b> or a
-            non-linear <b>Distance curve</b>. Press <span className="ss-kbd">F</span> to fit all.
+            True-scale distances make the inner planets almost invisible. Increase the <b>Size
+            multiplier</b> or try a non-linear <b>Distance curve</b> to inspect them more easily.
+            Press <span className="ss-kbd">F</span> to fit all.
           </div>
         </div>
 
@@ -892,6 +1004,9 @@ export default function SolarSystem({
                 </div>
               </>
             )}
+            <div>
+              Size scale: <b>{sizeDescriptor}</b>
+            </div>
             <div className="ss-tip">
               Tip: <span className="ss-kbd">1</span>…<span className="ss-kbd">9</span> to jump;{' '}
               <span className="ss-kbd">Space</span> pause.
@@ -949,6 +1064,73 @@ function rand(a: number, b: number) {
 
 function formatKM(n: number) {
   return `${Math.round(n).toLocaleString()} km`;
+}
+
+function formatNumber(n: number) {
+  if (n >= 1000) return n.toFixed(0);
+  if (n >= 10) return n.toFixed(1);
+  return n.toFixed(2);
+}
+
+function sliderToZoom(slider: number) {
+  const t = Math.pow(clamp(slider / 100, 0, 1), ZOOM_SLIDER_EXP);
+  const ratio = Math.pow(ZOOM_MAX / ZOOM_MIN, t);
+  return clamp(ZOOM_MIN * ratio, ZOOM_MIN, ZOOM_MAX);
+}
+
+function zoomToSlider(zoom: number) {
+  const safeZoom = clamp(zoom, ZOOM_MIN, ZOOM_MAX);
+  const totalRatio = ZOOM_MAX / ZOOM_MIN;
+  const ratio = safeZoom / ZOOM_MIN;
+  const t = Math.log(ratio) / Math.log(totalRatio || 10);
+  const slider = Math.pow(clamp(t, 0, 1), 1 / ZOOM_SLIDER_EXP) * 100;
+  return Math.round(slider);
+}
+
+function formatZoom(z: number) {
+  if (z >= 10) return `${z.toFixed(1)}× zoom`;
+  if (z >= 1) return `${z.toFixed(2)}× zoom`;
+  return `${z.toFixed(3)}× zoom`;
+}
+
+function formatSpeed(daysPerSecond: number) {
+  if (daysPerSecond <= 0) return 'Paused';
+  if (daysPerSecond >= 365) {
+    return `${formatNumber(daysPerSecond / 365)} years per second`;
+  }
+  if (daysPerSecond >= 1) {
+    return `${formatNumber(daysPerSecond)} days per second`;
+  }
+  const secondsPerDay = 1 / daysPerSecond;
+  if (secondsPerDay < 60) {
+    return `1 day every ${secondsPerDay.toFixed(0)} sec`;
+  }
+  const minutesPerDay = secondsPerDay / 60;
+  if (minutesPerDay < 60) {
+    return `1 day every ${minutesPerDay.toFixed(1)} min`;
+  }
+  const hoursPerDay = minutesPerDay / 60;
+  if (hoursPerDay < 48) {
+    return `1 day every ${hoursPerDay.toFixed(2)} hr`;
+  }
+  const daysReal = hoursPerDay / 24;
+  if (daysReal < 365) {
+    return `1 day every ${daysReal.toFixed(1)} days`;
+  }
+  const yearsReal = daysReal / 365;
+  return `1 day every ${yearsReal.toFixed(2)} years`;
+}
+
+function sliderToSpeed(slider: number) {
+  const t = clamp(slider / 100, 0, 1);
+  const eased = Math.pow(t, 3.2);
+  return Math.round(eased * SPEED_MAX);
+}
+
+function speedToSlider(speed: number) {
+  const t = clamp(speed, SPEED_MIN, SPEED_MAX) / SPEED_MAX;
+  const slider = Math.pow(t, 1 / 3.2);
+  return Math.round(slider * 100);
 }
 
 function getFullscreenElement(): Element | null {
@@ -1012,8 +1194,22 @@ const css = `
 .ss-sub { font-size:12px; color:var(--muted); margin-top:4px; }
 .ss-controls { display:grid; grid-template-columns: 1fr 1fr; gap:10px 14px; align-items:center; margin-top:10px; }
 .ss-controls label { font-size:12px; color:var(--muted); }
-.ss-controls input[type="range"] { width:180px; }
+.ss-controls input[type="range"] { width:100%; max-width:240px; accent-color: var(--accent); }
 .ss-row { display:flex; gap:10px; align-items:center; }
+.ss-segment { gap:8px; flex-wrap:wrap; }
+.ss-segment__option {
+  display:inline-flex; align-items:center; gap:6px; padding:6px 10px;
+  border-radius:999px; border:1px solid rgba(255,255,255,0.12);
+  background: rgba(255,255,255,0.04); font-size:12px; cursor:pointer;
+  transition: border-color 0.2s ease, background 0.2s ease;
+}
+.ss-segment__option input { position:absolute; opacity:0; pointer-events:none; }
+.ss-segment__option.is-active {
+  background: linear-gradient(90deg, rgba(106,227,255,0.18), rgba(176,132,255,0.18));
+  border-color: rgba(106,227,255,0.45);
+}
+.ss-sliderwrap { display:grid; gap:6px; }
+.ss-meta { font-size:11px; color:rgba(240,244,255,0.65); letter-spacing:0.04em; text-transform:uppercase; }
 .ss-chiplist { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; max-width:560px; }
 .ss-chip {
   padding:6px 10px; border-radius:999px; font-size:12px; border:1px solid var(--border);

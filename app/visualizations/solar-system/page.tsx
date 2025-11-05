@@ -29,14 +29,19 @@ const highlights = [
       "Switch between linear, square-root, and logarithmic spacing to surface the inner planets or appreciate the outer giants."
   },
   {
-    title: "True orbital motion",
+    title: "True-to-scale bodies",
     description:
-      "Simulated orbital periods keep each body in motion. Pause, resume, and focus on any planet with a single click or keypress."
+      "Planets and the Sun render at their physical radii; enhance size uniformly when you need clarity without distorting proportions."
   },
   {
     title: "Accessible controls",
     description:
-      "Keyboard shortcuts, high-contrast labels, and responsive layout make the visualization enjoyable on any device."
+      "Keyboard shortcuts, a responsive zoom range, and a logarithmic speed slider let you explore comfortably on any device."
+  },
+  {
+    title: "Real orbital motion",
+    description:
+      "Simulated orbital periods keep every body in motion; pause, resume, or focus on planets instantly to compare timelines."
   }
 ];
 
@@ -48,8 +53,8 @@ export default function SolarSystemPage() {
         <h1>Solar System Scale Explorer</h1>
         <p>
           This interactive recreation of our solar system blends accurate orbital mechanics with
-          approachable controls. Experiment with distance curves, exaggerate body sizes, and observe
-          orbital speeds to internalize the vast scale of space.
+          approachable controls. Bodies render at true physical scale relative to their orbits; dial the
+          size multiplier only when you need additional clarity while preserving relative proportions.
         </p>
         <a className="link-arrow" href="/visualizations">
           ← Back to visualizations
@@ -67,6 +72,9 @@ export default function SolarSystemPage() {
         <ul>
           <li>Drag anywhere to pan, scroll to zoom, and click a planet to focus.</li>
           <li>Toggle fullscreen for an immersive view, especially on larger displays.</li>
+          <li>Use the extended zoom range to dive into inner-planet detail without losing scale.</li>
+          <li>Switch between true scale and enhanced size modes; the multiplier always maintains ratios.</li>
+          <li>Slow orbital speed to "real time" or accelerate centuries per second with the responsive slider.</li>
           <li>Press numbers <span className="ss-kbd">1</span>–<span className="ss-kbd">9</span> to jump directly to bodies.</li>
           <li>Toggle orbit lines, labels, and orbital trails to reveal different perspectives.</li>
         </ul>
@@ -86,7 +94,9 @@ export default function SolarSystemPage() {
         <p>
           Distances use mean semi-major axes in astronomical units, scaled via adjustable mapping to
           fit a comfortable viewport. Planetary radii reflect mean equatorial values expressed in
-          kilometers. Orbits are rendered as circular and coplanar to emphasize scale relationships.
+          kilometers. Size mode <code>x1</code> keeps planets at true scale relative to their orbital distances;
+          higher multipliers enlarge every body proportionally for visibility. Orbits are rendered as
+          circular and coplanar to emphasize scale relationships.
         </p>
         <p>
           Motion is simulated by advancing time in days per second. You can slow things down or pause
