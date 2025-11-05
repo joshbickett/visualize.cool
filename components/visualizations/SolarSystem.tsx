@@ -201,8 +201,6 @@ export default function SolarSystem({
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [controlsCollapsed, setControlsCollapsed] = useState(false);
 
-  const mapDistanceAU = useCallback((r: number) => r, []);
-
   const toScreen = useCallback((x: number, y: number) => {
     const { w, h } = sizeRef.current;
     const state = stateRef.current;
@@ -222,15 +220,12 @@ export default function SolarSystem({
     [BODIES]
   );
 
-  const bodyPositionAUprime = useCallback(
-    (body: Body | undefined, tDays: number) => {
-      if (!body || body.name === 'Sun') return { x: 0, y: 0 };
-      const theta = ((tDays % body.period_days) / body.period_days) * Math.PI * 2;
-      const r = mapDistanceAU(body.sma_au);
-      return { x: r * Math.cos(theta), y: r * Math.sin(theta) };
-    },
-    [mapDistanceAU]
-  );
+  const bodyPositionAUprime = useCallback((body: Body | undefined, tDays: number) => {
+    if (!body || body.name === 'Sun') return { x: 0, y: 0 };
+    const theta = ((tDays % body.period_days) / body.period_days) * Math.PI * 2;
+    const r = body.sma_au;
+    return { x: r * Math.cos(theta), y: r * Math.sin(theta) };
+  }, []);
 
   const planetPixelRadius = useCallback((body: Body) => {
     const { baseScale, zoom } = stateRef.current;
@@ -314,8 +309,7 @@ export default function SolarSystem({
   const drawOrbit = useCallback(
     (ctx: CanvasRenderingContext2D, body: Body) => {
       if (body.name === 'Sun' || !stateRef.current.showOrbits) return;
-      const r = mapDistanceAU(body.sma_au);
-      const pxr = r * stateRef.current.baseScale * stateRef.current.zoom;
+      const pxr = body.sma_au * stateRef.current.baseScale * stateRef.current.zoom;
       const center = toScreen(0, 0);
       ctx.strokeStyle = 'rgba(255,255,255,0.08)';
       ctx.lineWidth = 1;
@@ -323,7 +317,7 @@ export default function SolarSystem({
       ctx.arc(center.x, center.y, pxr, 0, Math.PI * 2);
       ctx.stroke();
     },
-    [mapDistanceAU, toScreen]
+    [toScreen]
   );
 
   const drawRing = useCallback(
@@ -616,7 +610,6 @@ export default function SolarSystem({
     drawStarfield,
     fitAll,
     focusBody,
-    mapDistanceAU,
     planetPixelRadius,
     toScreen,
     toWorld
