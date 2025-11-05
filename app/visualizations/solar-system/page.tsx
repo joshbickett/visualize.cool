@@ -46,6 +46,30 @@ const highlights = [
 ];
 
 export default function SolarSystemPage() {
+  const structuredData = {
+    "@context": "https://schema.org",
+    "@type": "LearningResource",
+    name: "Solar System Scale Explorer",
+    description:
+      "Interactive solar system visualization that preserves true orbital distances and body radii with deep zoom and adaptive speed controls.",
+    about: [
+      { "@type": "Thing", name: "Solar system" },
+      { "@type": "Thing", name: "Astronomy education" },
+      { "@type": "Thing", name: "Data visualization" }
+    ],
+    url: "https://visualize.cool/visualizations/solar-system",
+    learningResourceType: "InteractiveVisualization",
+    audience: {
+      "@type": "EducationalAudience",
+      educationalRole: ["Students", "Educators", "Enthusiasts"]
+    },
+    creator: {
+      "@type": "Organization",
+      name: "visualize.cool",
+      url: "https://visualize.cool"
+    }
+  };
+
   return (
     <article className="viz-page">
       <header className="viz-page__header">
@@ -101,6 +125,11 @@ export default function SolarSystemPage() {
           entirely to inspect orbit geometry, rings, and resonances.
         </p>
       </section>
+
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(structuredData) }}
+      />
     </article>
   );
 }

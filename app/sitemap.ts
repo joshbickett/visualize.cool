@@ -6,6 +6,7 @@ const routes = [
   "",
   "/visualizations",
   "/visualizations/solar-system",
+  "/search",
   "/about",
   "/contribute"
 ];
