@@ -43,8 +43,8 @@ export default function HomePage() {
           <div className="viz-card__badge">Featured visualization</div>
           <h2 className="viz-card__title">Solar System Scale Explorer</h2>
           <p className="viz-card__copy">
-            Glide across orbits, adjust scales, and truly feel the magnitude of our celestial
-            neighborhood.
+            Glide across orbits, dive into deep zoom, and truly feel the magnitude of our celestial
+            neighborhood without distorting reality.
           </p>
           <span className="viz-card__link">
             View visualization <span aria-hidden>→</span>

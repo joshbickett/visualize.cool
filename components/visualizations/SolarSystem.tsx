@@ -3,13 +3,10 @@
 import React, {
   useCallback,
   useEffect,
-  useId,
   useMemo,
   useRef,
   useState
 } from 'react';
-
-type DistanceCurve = 'linear' | 'sqrt' | 'log';
 
 type Ring = {
   inner: number;
@@ -41,28 +38,33 @@ type TrailMap = Record<string, Point[]>;
 
 type SolarSystemProps = {
   height?: React.CSSProperties['height'];
-  initialCurve?: DistanceCurve;
   initialZoom?: number;
-  initialSizeBoost?: number;
   initialSpeed?: number;
   className?: string;
   style?: React.CSSProperties;
 };
 
-type SizePreset = 'accurate' | 'enhanced' | 'custom';
-
 const AU_KM = 149_597_870.7;
 const ZOOM_MIN = 0.02;
-const ZOOM_MAX = 400;
+const ZOOM_MAX = 200_000;
 const ZOOM_SLIDER_EXP = 3.4;
 const SPEED_MIN = 0;
 const SPEED_MAX = 20_000;
 
+/**
+ * SolarSystem
+ * High-fidelity solar system scale visualization focused on physical accuracy.
+ *
+ * Props:
+ *  - height: CSS height for the component container (default: '100vh')
+ *  - initialZoom: number (0.02..200000, default 1)
+ *  - initialSpeed: number (days/second, default 250)
+ *  - className: optional wrapper class
+ *  - style: optional wrapper style
+ */
 export default function SolarSystem({
   height = '100vh',
-  initialCurve = 'linear',
   initialZoom = 1,
-  initialSizeBoost = 1,
   initialSpeed = 250,
   className,
   style
@@ -183,10 +185,8 @@ export default function SolarSystem({
     showOrbits: true,
     showLabels: true,
     showTrails: false,
-    curve: initialCurve as DistanceCurve,
     zoom: initialZoom,
     baseScale: 18,
-    sizeBoost: initialSizeBoost,
     speed: initialSpeed,
     timeDays: 0,
     camera: { x: 0, y: 0 },
@@ -194,37 +194,14 @@ export default function SolarSystem({
     lastFrameMs: 0
   });
 
-  const [curve, setCurve] = useState<DistanceCurve>(initialCurve);
   const [zoom, setZoom] = useState(initialZoom);
-  const [sizeBoost, setSizeBoost] = useState(initialSizeBoost);
   const [speed, setSpeed] = useState(initialSpeed);
-  const [showOrbits, setShowOrbits] = useState(true);
-  const [showLabels, setShowLabels] = useState(true);
-  const [showTrails, setShowTrails] = useState(false);
   const [focus, setFocus] = useState('Sun');
   const [paused, setPaused] = useState(false);
   const [isFullscreen, setIsFullscreen] = useState(false);
-  const [sizePreset, setSizePreset] = useState<SizePreset>(() => {
-    if (initialSizeBoost === 1) return 'accurate';
-    if (initialSizeBoost === 250) return 'enhanced';
-    return 'custom';
-  });
   const [controlsCollapsed, setControlsCollapsed] = useState(false);
 
-  const curveName = useId();
-  const sizeModeName = useId();
-
-  const mapDistanceAU = useCallback(
-    (r: number) => {
-      const state = stateRef.current;
-      if (state.curve === 'sqrt') return Math.sqrt(r);
-      if (state.curve === 'log') {
-        return Math.log(1 + r * 4) / Math.log(1 + 4 * MAX_AU);
-      }
-      return r;
-    },
-    [MAX_AU]
-  );
+  const mapDistanceAU = useCallback((r: number) => r, []);
 
   const toScreen = useCallback((x: number, y: number) => {
     const { w, h } = sizeRef.current;
@@ -256,21 +233,19 @@ export default function SolarSystem({
   );
 
   const planetPixelRadius = useCallback((body: Body) => {
-    const state = stateRef.current;
-    const pixelsPerAU = state.baseScale * state.zoom;
-    const truePx = (body.radius_km / AU_KM) * pixelsPerAU;
-    const scaled = truePx * state.sizeBoost;
-    return state.sizeBoost <= 1 ? scaled : Math.max(1, scaled);
+    const { baseScale, zoom } = stateRef.current;
+    const pixelsPerAU = baseScale * zoom;
+    return (body.radius_km / AU_KM) * pixelsPerAU;
   }, []);
 
   const fitAll = useCallback(() => {
     const { w, h } = sizeRef.current;
-    const maxR = mapDistanceAU(MAX_AU);
+    const maxR = MAX_AU;
     const pad = 0.1;
     const usable = Math.min(w, h) * (1 - pad * 2);
     const scale = usable / (2 * maxR);
     stateRef.current.baseScale = Math.max(6, scale);
-  }, [MAX_AU, mapDistanceAU]);
+  }, [MAX_AU]);
 
   const focusBody = useCallback(
     (name: string, animate = true) => {
@@ -283,16 +258,11 @@ export default function SolarSystem({
       const { w, h } = sizeRef.current;
       const viewportMin = Math.max(320, Math.min(w, h));
       const radiusAU = target.radius_km / AU_KM;
-      const bodyScale = Math.max(radiusAU * state.baseScale * state.sizeBoost, 1e-9);
+      const bodyScale = Math.max(radiusAU * state.baseScale, 1e-9);
       const preferredPx = target.name === 'Sun'
         ? Math.max(viewportMin * 0.28, 220)
-        : Math.max(150, Math.min(viewportMin * 0.35, 280));
+        : Math.max(24, Math.min(viewportMin * 0.22, 120));
       let desiredZoom = clamp(preferredPx / bodyScale, ZOOM_MIN, ZOOM_MAX);
-
-      if (sizePreset === 'accurate' && target.name !== 'Sun') {
-        // For tiny inner planets, bias further in to ensure visibility.
-        desiredZoom = clamp(desiredZoom * 1.15, ZOOM_MIN, ZOOM_MAX);
-      }
 
       if (animate) {
         cameraAnimRef.current = {
@@ -308,7 +278,7 @@ export default function SolarSystem({
         setZoom(desiredZoom);
       }
     },
-    [BODIES, bodyByName, bodyPositionAUprime, sizePreset]
+    [BODIES, bodyByName, bodyPositionAUprime]
   );
 
   const drawStarfield = useCallback((ctx: CanvasRenderingContext2D) => {
@@ -672,12 +642,6 @@ export default function SolarSystem({
     };
   }, []);
 
-  const setCurveAndFit = (value: DistanceCurve) => {
-    setCurve(value);
-    stateRef.current.curve = value;
-    fitAll();
-  };
-
   const setZoomBoth = (value: number | string) => {
     const next = clamp(Number(value), ZOOM_MIN, ZOOM_MAX);
     setZoom(next);
@@ -690,34 +654,6 @@ export default function SolarSystem({
     setZoomBoth(actual);
   };
 
-  const applySizeBoost = (value: number, preset: SizePreset) => {
-    const next = clamp(value, 0.1, 2000);
-    setSizeBoost(next);
-    stateRef.current.sizeBoost = next;
-    setSizePreset(preset);
-  };
-
-  const setSizeBoostBoth = (value: number | string) => {
-    const next = Number(value);
-    const preset =
-      Math.abs(next - 1) < 0.001
-        ? 'accurate'
-        : Math.abs(next - 250) < 0.001
-        ? 'enhanced'
-        : 'custom';
-    applySizeBoost(next, preset);
-  };
-
-  const handleSizePreset = (preset: SizePreset) => {
-    if (preset === 'accurate') {
-      applySizeBoost(1, preset);
-    } else if (preset === 'enhanced') {
-      applySizeBoost(250, preset);
-    } else {
-      applySizeBoost(sizeBoost, 'custom');
-    }
-  };
-
   const setSpeedBoth = (value: number | string) => {
     const next = clamp(Number(value), SPEED_MIN, SPEED_MAX);
     setSpeed(next);
@@ -728,22 +664,6 @@ export default function SolarSystem({
     const slider = Number(value);
     const actual = sliderToSpeed(slider);
     setSpeedBoth(actual);
-  };
-
-  const setShowOrbitsBoth = (checked: boolean) => {
-    setShowOrbits(checked);
-    stateRef.current.showOrbits = checked;
-  };
-
-  const setShowLabelsBoth = (checked: boolean) => {
-    setShowLabels(checked);
-    stateRef.current.showLabels = checked;
-  };
-
-  const setShowTrailsBoth = (checked: boolean) => {
-    setShowTrails(checked);
-    stateRef.current.showTrails = checked;
-    if (!checked) trailRef.current = {};
   };
 
   const togglePause = () => {
@@ -762,16 +682,13 @@ export default function SolarSystem({
     const state = stateRef.current;
     state.zoom = 1;
     state.speed = initialSpeed;
-    state.curve = 'linear';
     state.camera.x = 0;
     state.camera.y = 0;
     state.focus = 'Sun';
     state.paused = false;
     state.lastFrameMs = 0;
     setZoom(1);
-    applySizeBoost(1, 'accurate');
     setSpeed(initialSpeed);
-    setCurve('linear');
     setFocus('Sun');
     setPaused(false);
     fitAll();
@@ -798,13 +715,6 @@ export default function SolarSystem({
       periodYears: body.period_days === Number.POSITIVE_INFINITY ? null : body.period_days / 365.25
     };
   }, [BODIES, bodyByName, focus]);
-
-  const sizeDescriptor = useMemo(() => {
-    if (sizePreset === 'accurate') return 'True scale (x1.0)';
-    const label = `x${formatNumber(sizeBoost)}`;
-    if (sizePreset === 'enhanced') return `Enhanced (${label})`;
-    return `Custom (${label})`;
-  }, [sizeBoost, sizePreset]);
 
   const zoomDescriptor = useMemo(() => formatZoom(zoom), [zoom]);
   const speedDescriptor = useMemo(() => formatSpeed(speed), [speed]);
@@ -848,157 +758,64 @@ export default function SolarSystem({
 
           {!controlsCollapsed && (
             <>
-          <div className="ss-controls" id="ss-controls">
-            <label>Distance curve</label>
-            <div className="ss-row" role="radiogroup" aria-label="Distance curve">
-              {(['linear', 'sqrt', 'log'] as DistanceCurve[]).map((value) => (
-                <label key={value}>
+              <div className="ss-controls" id="ss-controls">
+                <label htmlFor="ss-zoom">Zoom</label>
+                <div className="ss-sliderwrap">
                   <input
-                    type="radio"
-                    name={curveName}
-                    value={value}
-                    checked={curve === value}
-                    onChange={(event) => setCurveAndFit(event.target.value as DistanceCurve)}
-                  />{' '}
-                  {value === 'sqrt' ? '√' : value}
-                </label>
-              ))}
-            </div>
-
-            <label htmlFor="ss-zoom">Zoom</label>
-            <div className="ss-sliderwrap">
-              <input
-                id="ss-zoom"
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={zoomToSlider(zoom)}
-                onChange={(event) => handleZoomSlider(event.target.value)}
-              />
-              <div className="ss-meta" aria-live="polite">
-                {zoomDescriptor}
-              </div>
-            </div>
-
-            <label htmlFor="ss-size-mode">Size mode</label>
-            <div className="ss-row ss-segment" id="ss-size-mode" role="radiogroup" aria-label="Size scale mode">
-              {([
-                { value: 'accurate', label: 'True scale' },
-                { value: 'enhanced', label: 'Enhanced' }
-              ] as Array<{ value: SizePreset; label: string }>).map((option) => (
-                <label
-                  key={option.value}
-                  className={`ss-segment__option${sizePreset === option.value ? ' is-active' : ''}`}
-                >
-                  <input
-                    type="radio"
-                    name={sizeModeName}
-                    value={option.value}
-                    checked={sizePreset === option.value}
-                    onChange={() => handleSizePreset(option.value)}
+                    id="ss-zoom"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={zoomToSlider(zoom)}
+                    onChange={(event) => handleZoomSlider(event.target.value)}
                   />
-                  {option.label}
-                </label>
-              ))}
-              <label
-                className={`ss-segment__option${sizePreset === 'custom' ? ' is-active' : ''}`}
-              >
-                <input
-                  type="radio"
-                  name={sizeModeName}
-                  value="custom"
-                  checked={sizePreset === 'custom'}
-                  onChange={() => handleSizePreset('custom')}
-                />
-                Custom
-              </label>
-            </div>
+                  <div className="ss-meta" aria-live="polite">
+                    {zoomDescriptor}
+                  </div>
+                </div>
 
-            <label htmlFor="ss-size">Size multiplier</label>
-            <div className="ss-sliderwrap">
-              <input
-                id="ss-size"
-                type="range"
-                min="0.1"
-                max="2000"
-                step="0.1"
-                value={sizeBoost}
-                onChange={(event) => setSizeBoostBoth(event.target.value)}
-              />
-              <div className="ss-meta" aria-live="polite">
-                {sizePreset === 'accurate' ? 'x1.0 · true scale' : `x${formatNumber(sizeBoost)}${sizePreset === 'enhanced' ? ' · enhanced' : ''}`}
+                <label htmlFor="ss-speed">Orbital speed</label>
+                <div className="ss-sliderwrap">
+                  <input
+                    id="ss-speed"
+                    type="range"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={speedToSlider(speed)}
+                    onChange={(event) => handleSpeedSlider(event.target.value)}
+                  />
+                  <div className="ss-meta" aria-live="polite">
+                    {speedDescriptor}
+                  </div>
+                </div>
               </div>
-            </div>
 
-            <label htmlFor="ss-speed">Orbital speed</label>
-            <div className="ss-sliderwrap">
-              <input
-                id="ss-speed"
-                type="range"
-                min="0"
-                max="100"
-                step="1"
-                value={speedToSlider(speed)}
-                onChange={(event) => handleSpeedSlider(event.target.value)}
-              />
-              <div className="ss-meta" aria-live="polite">
-                {speedDescriptor}
+              <div className="ss-chiplist">
+                {BODIES.map((body) => (
+                  <button
+                    key={body.name}
+                    className="ss-chip"
+                    aria-current={focus === body.name}
+                    onClick={() => focusBody(body.name, true)}
+                    type="button"
+                  >
+                    {body.name}
+                  </button>
+                ))}
               </div>
-            </div>
-          </div>
 
-          <div className="ss-toggles">
-            <label>
-              <input
-                type="checkbox"
-                checked={showOrbits}
-                onChange={(event) => setShowOrbitsBoth(event.target.checked)}
-              />{' '}
-              Show orbits
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={showLabels}
-                onChange={(event) => setShowLabelsBoth(event.target.checked)}
-              />{' '}
-              Labels
-            </label>
-            <label>
-              <input
-                type="checkbox"
-                checked={showTrails}
-                onChange={(event) => setShowTrailsBoth(event.target.checked)}
-              />{' '}
-              Trails
-            </label>
-          </div>
-
-          <div className="ss-chiplist">
-            {BODIES.map((body) => (
-              <button
-                key={body.name}
-                className="ss-chip"
-                aria-current={focus === body.name}
-                onClick={() => focusBody(body.name, true)}
-                type="button"
-              >
-                {body.name}
-              </button>
-            ))}
-          </div>
-
-          <div className="ss-legend">
-            True-scale distances make the inner planets almost invisible. Increase the <b>Size
-            multiplier</b> or try a non-linear <b>Distance curve</b> to inspect them more easily.
-            Press <span className="ss-kbd">F</span> to fit all.
-          </div>
-          </>
+              <div className="ss-legend">
+                Scale is fixed to real radii and orbital distances. Use the deep zoom range and adaptive
+                speed to inspect inner planets without distorting proportions.{' '}
+                Press <span className="ss-kbd">F</span> to fit everything.
+              </div>
+            </>
           )}
           {controlsCollapsed && (
             <div className="ss-collapsed-hint">
-              Controls hidden · use the toggle to adjust distance curve, size, zoom, and speed.
+              Controls hidden · show them to adjust zoom depth and orbital speed.
             </div>
           )}
         </div>
@@ -1025,9 +842,6 @@ export default function SolarSystem({
                 </div>
               </>
             )}
-            <div>
-              Size scale: <b>{sizeDescriptor}</b>
-            </div>
             <div className="ss-tip">
               Tip: <span className="ss-kbd">1</span>…<span className="ss-kbd">9</span> to jump;{' '}
               <span className="ss-kbd">Space</span> pause.
@@ -1109,6 +923,7 @@ function zoomToSlider(zoom: number) {
 }
 
 function formatZoom(z: number) {
+  if (z >= 1000) return `${Math.round(z).toLocaleString()}× zoom`;
   if (z >= 10) return `${z.toFixed(1)}× zoom`;
   if (z >= 1) return `${z.toFixed(2)}× zoom`;
   return `${z.toFixed(3)}× zoom`;
@@ -1205,11 +1020,11 @@ const css = `
 .ss-hud { position: absolute; top: 16px; left: 16px; right: 16px; display:flex; gap:16px; align-items:flex-start; pointer-events:none; flex-wrap:wrap; }
 .ss-panel {
   pointer-events:auto; background:var(--panel); border:1px solid var(--border);
-  box-shadow:var(--shadow); border-radius: var(--radius); padding: 14px 16px;
+  box-shadow:var(--shadow); border-radius: var(--radius); padding: 12px 14px;
   backdrop-filter: blur(8px) saturate(120%);
-  width: min(100%, 380px);
+  width: min(100%, 320px);
 }
-.ss-panel--collapsed { padding: 12px 14px; }
+.ss-panel--collapsed { padding: 10px 12px; width: auto; }
 .ss-right { margin-left:auto; max-width:300px; }
 .ss-brand { display:flex; align-items:flex-start; gap:12px; justify-content:space-between; }
 .ss-brand-left { display:flex; align-items:center; gap:10px; }
@@ -1224,22 +1039,10 @@ const css = `
 }
 .ss-collapse:hover { background:rgba(106,227,255,0.14); border-color:rgba(106,227,255,0.35); }
 .ss-collapsed-hint { font-size:12px; color:var(--muted); margin-top:10px; }
-.ss-controls { display:grid; grid-template-columns: 1fr 1fr; gap:10px 14px; align-items:center; margin-top:10px; }
+.ss-controls { display:grid; grid-template-columns: 1fr; gap:10px; margin-top:10px; align-items:start; }
 .ss-controls label { font-size:12px; color:var(--muted); }
 .ss-controls input[type="range"] { width:100%; max-width:240px; accent-color: var(--accent); }
 .ss-row { display:flex; gap:10px; align-items:center; }
-.ss-segment { gap:8px; flex-wrap:wrap; }
-.ss-segment__option {
-  display:inline-flex; align-items:center; gap:6px; padding:6px 10px;
-  border-radius:999px; border:1px solid rgba(255,255,255,0.12);
-  background: rgba(255,255,255,0.04); font-size:12px; cursor:pointer;
-  transition: border-color 0.2s ease, background 0.2s ease;
-}
-.ss-segment__option input { position:absolute; opacity:0; pointer-events:none; }
-.ss-segment__option.is-active {
-  background: linear-gradient(90deg, rgba(106,227,255,0.18), rgba(176,132,255,0.18));
-  border-color: rgba(106,227,255,0.45);
-}
 .ss-sliderwrap { display:grid; gap:6px; }
 .ss-meta { font-size:11px; color:rgba(240,244,255,0.65); letter-spacing:0.04em; text-transform:uppercase; }
 .ss-chiplist { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; max-width:560px; }
@@ -1248,8 +1051,6 @@ const css = `
   background: rgba(255,255,255,0.05); cursor:pointer; user-select:none; color:var(--text);
 }
 .ss-chip[aria-current="true"] { background: linear-gradient(90deg, rgba(106,227,255,0.15), rgba(176,132,255,0.15)); border-color:rgba(255,255,255,0.18) }
-.ss-toggles { display:flex; flex-wrap:wrap; gap:12px; margin-top:8px; font-size:12px; color:var(--muted); }
-.ss-toggles label { display:flex; align-items:center; gap:6px; cursor:pointer; }
 .ss-kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding:1px 6px; border-radius:6px; border:1px solid var(--border); }
 .ss-legend { font-size:12px; color:var(--muted); margin-top:8px; }
 .ss-info { font-size:13px; display:grid; gap:6px; }

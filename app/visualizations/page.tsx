@@ -6,9 +6,10 @@ const visualizations = [
     slug: "solar-system",
     title: "Solar System Scale Explorer",
     description:
-      "Beautiful, responsive tour of our solar system with adjustable distance curves, sizes, and orbital speeds."
+      "Beautiful, responsive tour of our solar system with true-to-scale bodies, deep zoom, and adaptive orbital speeds.",
+    href: "/visualizations/solar-system"
   }
-];
+] as const;
 
 export const metadata: Metadata = {
   title: "Visualizations",
@@ -31,10 +32,10 @@ export default function VisualizationsIndexPage() {
         {visualizations.map((viz) => (
           <article key={viz.slug} className="grid__item">
             <h2>
-              <Link href={`/visualizations/${viz.slug}`}>{viz.title}</Link>
+              <Link href={viz.href}>{viz.title}</Link>
             </h2>
             <p>{viz.description}</p>
-            <Link className="link-arrow" href={`/visualizations/${viz.slug}`}>
+            <Link className="link-arrow" href={viz.href}>
               View visualization
             </Link>
           </article>
