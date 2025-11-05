@@ -550,7 +550,7 @@ export default function SolarSystem({
       const rect = canvas.getBoundingClientRect();
       const mx = event.clientX - rect.left;
       const my = event.clientY - rect.top;
-      let best: Body | null = null;
+      let best: Body | undefined;
       let bestDistance = Number.POSITIVE_INFINITY;
 
       BODIES.forEach((body) => {
@@ -564,7 +564,9 @@ export default function SolarSystem({
         }
       });
 
-      if (best) focusBody(best.name, true);
+      if (best !== undefined) {
+        focusBody(best.name, true);
+      }
     };
 
     const onKey = (event: KeyboardEvent) => {
