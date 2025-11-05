@@ -1,6 +1,6 @@
 # visualize.cool
 
-Interactive React/Next.js experience showcasing curated visualizations, starting with a Solar System scale explorer.
+Interactive React/Next.js experience showcasing curated visualizations, starting with a Solar System scale explorer that tracks true orbital eccentricities and perihelion orientations.
 
 ## Getting started
 

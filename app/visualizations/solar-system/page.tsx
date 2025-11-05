@@ -26,7 +26,7 @@ const highlights = [
   {
     title: "True-to-scale bodies",
     description:
-      "Planets and the Sun render at their physical radii and orbital distances—no exaggeration, ever."
+      "Planets render at their physical radii while elliptical paths respect real eccentricities and perihelion orientation—no exaggeration."
   },
   {
     title: "Deep zoom focus",
@@ -118,7 +118,8 @@ export default function SolarSystemPage() {
           Distances use mean semi-major axes in astronomical units, scaled linearly to fit a
           comfortable viewport. Planetary radii reflect mean equatorial values expressed in
           kilometers, and camera zoom provides reach without altering their relative proportions.
-          Orbits are rendered as circular and coplanar to emphasize scale relationships.
+          Orbits are modeled as coplanar ellipses using J2000 eccentricities and perihelion angles to
+          emphasize realistic scale relationships.
         </p>
         <p>
           Motion is simulated by advancing time in days per second. You can slow things down or pause

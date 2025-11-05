@@ -23,6 +23,8 @@ type Body = {
   radius_km: number;
   period_days: number;
   ring: Ring | null;
+  eccentricity: number;
+  perihelion_deg: number;
 };
 
 type Point = { x: number; y: number };
@@ -45,6 +47,7 @@ type SolarSystemProps = {
 };
 
 const AU_KM = 149_597_870.7;
+const TAU = Math.PI * 2;
 const ZOOM_MIN = 0.02;
 const ZOOM_MAX = 200_000;
 const ZOOM_SLIDER_EXP = 3.4;
@@ -79,7 +82,9 @@ export default function SolarSystem({
         sma_au: 0,
         radius_km: 695_700,
         period_days: Number.POSITIVE_INFINITY,
-        ring: null
+        ring: null,
+        eccentricity: 0,
+        perihelion_deg: 0
       },
       {
         name: 'Mercury',
@@ -89,7 +94,9 @@ export default function SolarSystem({
         sma_au: 0.387098,
         radius_km: 2439.7,
         period_days: 87.969,
-        ring: null
+        ring: null,
+        eccentricity: 0.20563,
+        perihelion_deg: 77.4578
       },
       {
         name: 'Venus',
@@ -99,7 +106,9 @@ export default function SolarSystem({
         sma_au: 0.723332,
         radius_km: 6051.8,
         period_days: 224.701,
-        ring: null
+        ring: null,
+        eccentricity: 0.006772,
+        perihelion_deg: 131.6025
       },
       {
         name: 'Earth',
@@ -109,7 +118,9 @@ export default function SolarSystem({
         sma_au: 1,
         radius_km: 6371,
         period_days: 365.256,
-        ring: null
+        ring: null,
+        eccentricity: 0.016710,
+        perihelion_deg: 102.9377
       },
       {
         name: 'Mars',
@@ -119,7 +130,9 @@ export default function SolarSystem({
         sma_au: 1.523679,
         radius_km: 3389.5,
         period_days: 686.98,
-        ring: null
+        ring: null,
+        eccentricity: 0.093394,
+        perihelion_deg: 336.0408
       },
       {
         name: 'Jupiter',
@@ -129,7 +142,9 @@ export default function SolarSystem({
         sma_au: 5.2044,
         radius_km: 69_911,
         period_days: 4332.589,
-        ring: null
+        ring: null,
+        eccentricity: 0.048386,
+        perihelion_deg: 14.7539
       },
       {
         name: 'Saturn',
@@ -139,7 +154,9 @@ export default function SolarSystem({
         sma_au: 9.5826,
         radius_km: 58_232,
         period_days: 10_759.22,
-        ring: { inner: 1.15, outer: 2.41, tilt_deg: 26.7 }
+        ring: { inner: 1.15, outer: 2.41, tilt_deg: 26.7 },
+        eccentricity: 0.053862,
+        perihelion_deg: 92.4319
       },
       {
         name: 'Uranus',
@@ -149,7 +166,9 @@ export default function SolarSystem({
         sma_au: 19.2184,
         radius_km: 25_362,
         period_days: 30_685.4,
-        ring: { inner: 1.6, outer: 2, tilt_deg: 97.8 }
+        ring: { inner: 1.6, outer: 2, tilt_deg: 97.8 },
+        eccentricity: 0.047257,
+        perihelion_deg: 170.9642
       },
       {
         name: 'Neptune',
@@ -159,14 +178,16 @@ export default function SolarSystem({
         sma_au: 30.11,
         radius_km: 24_622,
         period_days: 60_190,
-        ring: null
+        ring: null,
+        eccentricity: 0.008590,
+        perihelion_deg: 44.9714
       }
     ],
     []
   );
 
   const MAX_AU = useMemo(
-    () => Math.max(...BODIES.map((body) => body.sma_au)),
+    () => Math.max(...BODIES.map((body) => body.sma_au * (1 + body.eccentricity))),
     [BODIES]
   );
 
@@ -222,9 +243,27 @@ export default function SolarSystem({
 
   const bodyPositionAUprime = useCallback((body: Body | undefined, tDays: number) => {
     if (!body || body.name === 'Sun') return { x: 0, y: 0 };
-    const theta = ((tDays % body.period_days) / body.period_days) * Math.PI * 2;
-    const r = body.sma_au;
-    return { x: r * Math.cos(theta), y: r * Math.sin(theta) };
+    const a = body.sma_au;
+    const e = body.eccentricity;
+    if (e === 0) {
+      const angle = TAU * ((tDays % body.period_days) / body.period_days);
+      return { x: a * Math.cos(angle), y: a * Math.sin(angle) };
+    }
+
+    const meanMotion = TAU / body.period_days;
+    const meanAnomaly = normalizeAngle(meanMotion * tDays);
+    const eccentricAnomaly = solveKepler(meanAnomaly, e);
+    const cosE = Math.cos(eccentricAnomaly);
+    const sinE = Math.sin(eccentricAnomaly);
+    const xPrime = a * (cosE - e);
+    const yPrime = a * Math.sqrt(1 - e * e) * sinE;
+    const omega = toRadians(body.perihelion_deg);
+    const cosO = Math.cos(omega);
+    const sinO = Math.sin(omega);
+    return {
+      x: xPrime * cosO - yPrime * sinO,
+      y: xPrime * sinO + yPrime * cosO
+    };
   }, []);
 
   const planetPixelRadius = useCallback((body: Body) => {
@@ -309,12 +348,29 @@ export default function SolarSystem({
   const drawOrbit = useCallback(
     (ctx: CanvasRenderingContext2D, body: Body) => {
       if (body.name === 'Sun' || !stateRef.current.showOrbits) return;
-      const pxr = body.sma_au * stateRef.current.baseScale * stateRef.current.zoom;
-      const center = toScreen(0, 0);
+      const e = body.eccentricity;
+      const omega = toRadians(body.perihelion_deg);
+      const cosO = Math.cos(omega);
+      const sinO = Math.sin(omega);
+      const scale = stateRef.current.baseScale * stateRef.current.zoom;
+      const segments = 256;
+
       ctx.strokeStyle = 'rgba(255,255,255,0.08)';
       ctx.lineWidth = 1;
       ctx.beginPath();
-      ctx.arc(center.x, center.y, pxr, 0, Math.PI * 2);
+      for (let i = 0; i <= segments; i++) {
+        const M = (TAU * i) / segments;
+        const E = e === 0 ? M : solveKepler(M, e);
+        const cosE = Math.cos(E);
+        const sinE = Math.sin(E);
+        const xPrime = body.sma_au * (cosE - e);
+        const yPrime = body.sma_au * Math.sqrt(1 - e * e) * sinE;
+        const x = xPrime * cosO - yPrime * sinO;
+        const y = xPrime * sinO + yPrime * cosO;
+        const screen = toScreen(x, y);
+        if (i === 0) ctx.moveTo(screen.x, screen.y);
+        else ctx.lineTo(screen.x, screen.y);
+      }
       ctx.stroke();
     },
     [toScreen]
@@ -802,9 +858,10 @@ export default function SolarSystem({
               </div>
 
               <div className="ss-legend">
-                Scale is fixed to real radii and orbital distances. Use the deep zoom range and adaptive
-                speed to inspect inner planets without distorting proportions.{' '}
-                Press <span className="ss-kbd">F</span> to fit everything.
+                Scale is fixed to real radii and orbital distances, with orbits following true
+                eccentricities and perihelion angles. Use the deep zoom range and adaptive speed to
+                inspect inner planets without distorting proportions. Press <span className="ss-kbd">F</span>
+                to fit everything.
               </div>
             </>
           )}
@@ -962,6 +1019,31 @@ function speedToSlider(speed: number) {
   const t = clamp(speed, SPEED_MIN, SPEED_MAX) / SPEED_MAX;
   const slider = Math.pow(t, 1 / 3.2);
   return Math.round(slider * 100);
+}
+
+function toRadians(deg: number) {
+  return (deg * Math.PI) / 180;
+}
+
+function normalizeAngle(angle: number) {
+  let a = angle % TAU;
+  if (a < 0) a += TAU;
+  return a;
+}
+
+function solveKepler(meanAnomaly: number, eccentricity: number) {
+  const m = normalizeAngle(meanAnomaly);
+  let e = eccentricity;
+  if (e === 0) return m;
+  let E = e < 0.8 ? m : Math.PI;
+  for (let i = 0; i < 12; i++) {
+    const f = E - e * Math.sin(E) - m;
+    const fPrime = 1 - e * Math.cos(E);
+    const delta = f / fPrime;
+    E -= delta;
+    if (Math.abs(delta) < 1e-8) break;
+  }
+  return E;
 }
 
 function getFullscreenElement(): Element | null {
