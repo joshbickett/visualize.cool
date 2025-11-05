@@ -1,0 +1,20 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 630">
+  <defs>
+    <radialGradient id="bg" cx="20%" cy="0%" r="120%">
+      <stop offset="0%" stop-color="#122041"/>
+      <stop offset="100%" stop-color="#05070d"/>
+    </radialGradient>
+    <linearGradient id="accent" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#6ae3ff"/>
+      <stop offset="100%" stop-color="#b084ff"/>
+    </linearGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <circle cx="320" cy="280" r="180" fill="url(#accent)" opacity="0.6"/>
+  <circle cx="880" cy="360" r="120" fill="#ffd166" opacity="0.4"/>
+  <circle cx="720" cy="190" r="60" fill="#ffffff" opacity="0.3"/>
+  <g font-family="Inter, system-ui, -apple-system, Segoe UI, sans-serif" fill="#f8fbff">
+    <text x="120" y="470" font-size="72" font-weight="600">visualize.cool</text>
+    <text x="120" y="520" font-size="28" fill="rgba(232, 236, 241, 0.8)">Interactive visualizations that feel like exploration.</text>
+  </g>
+</svg>

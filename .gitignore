@@ -1,0 +1,35 @@
+# Dependencies
+node_modules/
+
+# Next.js
+.next/
+out/
+dist/
+
+# Build artifacts
+*.log
+*.lock
+*.lockb
+*.pid
+*.seed
+*.tgz
+*.tsbuildinfo
+
+# Env files
+.env
+.env.local
+.env.development.local
+.env.test.local
+.env.production.local
+
+# Runtime data
+coverage/
+reports/
+tmp/
+
+# Editor
+.DS_Store
+.idea/
+*.swp
+*.swo
+.vscode/

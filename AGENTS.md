@@ -1,0 +1,1 @@
+The website is a repository of visualizations for users to learn from or just enjoy. Any dev can make a PR with a new visualization. Our goal is to refine each visualization and make it more accurate overtime. 
