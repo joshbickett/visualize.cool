@@ -700,7 +700,7 @@ export default function GPTArchitecture({ height = "600px" }: Props) {
       {/* Token info */}
       {hoveredToken !== null && tokens[hoveredToken] && (
         <div className="gpt-token-info">
-          <h4>Token: "{tokens[hoveredToken].text}"</h4>
+          <h4>Token: &ldquo;{tokens[hoveredToken].text}&rdquo;</h4>
           <p>Position: {hoveredToken}</p>
           <p>Can attend to: tokens 0-{hoveredToken}</p>
           {selectedLayer !== null && layers[selectedLayer] && (
