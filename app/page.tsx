@@ -88,7 +88,7 @@ export default function HomePage() {
           </div>
         </Link>
 
-        <Link href="/visualizations/gpt-architecture" className="featured-card featured-card--alt">
+{/* <Link href="/visualizations/gpt-architecture" className="featured-card featured-card--alt">
           <div className="featured-card__glow featured-card__glow--alt" />
           <div className="featured-card__content">
             <span className="featured-card__label">New</span>
@@ -108,7 +108,7 @@ export default function HomePage() {
             <div className="featured-card__connection featured-card__connection--2" />
             <div className="featured-card__connection featured-card__connection--3" />
           </div>
-        </Link>
+        </Link> */}
       </section>
 
       {/* Features */}

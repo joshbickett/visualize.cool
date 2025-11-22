@@ -6,7 +6,7 @@ const routes = [
   "",
   "/visualizations",
   "/visualizations/solar-system",
-  "/visualizations/gpt-architecture",
+  // "/visualizations/gpt-architecture",
   "/search",
   "/about",
   "/contribute"
