@@ -8,6 +8,13 @@ const visualizations = [
     description:
       "Beautiful, responsive tour of our solar system with true-to-scale bodies, deep zoom, and adaptive orbital speeds.",
     href: "/visualizations/solar-system"
+  },
+  {
+    slug: "gpt-architecture",
+    title: "GPT Architecture Visualizer",
+    description:
+      "Interactive visualization of the GPT transformer architecture showing token embeddings, multi-head self-attention, and layer-by-layer processing.",
+    href: "/visualizations/gpt-architecture"
   }
 ] as const;
 
