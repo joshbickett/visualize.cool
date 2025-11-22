@@ -60,7 +60,7 @@ export default function HomePage() {
         </div>
       </section>
 
-      {/* Featured Card */}
+      {/* Featured Cards */}
       <section className="landing__featured">
         <Link href="/visualizations/solar-system" className="featured-card">
           <div className="featured-card__glow" />
@@ -85,6 +85,28 @@ export default function HomePage() {
             <div className="featured-card__orbit featured-card__orbit--3">
               <div className="featured-card__planet featured-card__planet--3" />
             </div>
+          </div>
+        </Link>
+
+        <Link href="/visualizations/gpt-architecture" className="featured-card featured-card--alt">
+          <div className="featured-card__glow featured-card__glow--alt" />
+          <div className="featured-card__content">
+            <span className="featured-card__label">New</span>
+            <h2 className="featured-card__title">GPT Architecture Visualizer</h2>
+            <p className="featured-card__desc">
+              Explore how transformer models process text through attention heads and layers. See the magic behind AI.
+            </p>
+            <span className="featured-card__action">
+              Explore Architecture <span className="featured-card__arrow">→</span>
+            </span>
+          </div>
+          <div className="featured-card__visual featured-card__visual--gpt">
+            <div className="featured-card__node featured-card__node--1" />
+            <div className="featured-card__node featured-card__node--2" />
+            <div className="featured-card__node featured-card__node--3" />
+            <div className="featured-card__connection featured-card__connection--1" />
+            <div className="featured-card__connection featured-card__connection--2" />
+            <div className="featured-card__connection featured-card__connection--3" />
           </div>
         </Link>
       </section>

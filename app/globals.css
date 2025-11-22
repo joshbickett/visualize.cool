@@ -455,6 +455,115 @@ code {
   margin-left: -6px;
 }
 
+/* Featured Card - Alt variant for GPT */
+.landing__featured {
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.featured-card--alt .featured-card__label {
+  color: rgba(176, 132, 255, 0.9);
+}
+
+.featured-card--alt .featured-card__action {
+  color: rgba(176, 132, 255, 0.9);
+}
+
+.featured-card__glow--alt {
+  background: radial-gradient(ellipse, rgba(176, 132, 255, 0.15) 0%, transparent 60%);
+}
+
+.featured-card--alt:hover {
+  box-shadow:
+    0 30px 60px rgba(4, 8, 18, 0.5),
+    0 0 100px rgba(176, 132, 255, 0.1);
+}
+
+/* GPT Visual */
+.featured-card__visual--gpt {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+}
+
+.featured-card__node {
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  animation: nodeFloat 3s ease-in-out infinite;
+}
+
+.featured-card__node--1 {
+  background: linear-gradient(135deg, #FF6B6B, #FF8E8E);
+  box-shadow: 0 0 20px rgba(255, 107, 107, 0.5);
+  top: 20%;
+  left: 25%;
+  animation-delay: 0s;
+}
+
+.featured-card__node--2 {
+  background: linear-gradient(135deg, #4ECDC4, #6EE7DF);
+  box-shadow: 0 0 20px rgba(78, 205, 196, 0.5);
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  width: 24px;
+  height: 24px;
+  animation-delay: -1s;
+}
+
+.featured-card__node--3 {
+  background: linear-gradient(135deg, #FFE66D, #FFF09E);
+  box-shadow: 0 0 20px rgba(255, 230, 109, 0.5);
+  bottom: 20%;
+  right: 25%;
+  animation-delay: -2s;
+}
+
+@keyframes nodeFloat {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.featured-card__connection {
+  position: absolute;
+  height: 2px;
+  background: linear-gradient(90deg, transparent, rgba(176, 132, 255, 0.6), transparent);
+  animation: connectionPulse 2s ease-in-out infinite;
+}
+
+.featured-card__connection--1 {
+  width: 80px;
+  top: 30%;
+  left: 30%;
+  transform: rotate(30deg);
+  animation-delay: 0s;
+}
+
+.featured-card__connection--2 {
+  width: 60px;
+  top: 50%;
+  left: 45%;
+  transform: rotate(-20deg);
+  animation-delay: -0.7s;
+}
+
+.featured-card__connection--3 {
+  width: 70px;
+  bottom: 35%;
+  right: 30%;
+  transform: rotate(15deg);
+  animation-delay: -1.4s;
+}
+
+@keyframes connectionPulse {
+  0%, 100% { opacity: 0.3; }
+  50% { opacity: 1; }
+}
+
 /* Features Section */
 .landing__features {
   display: flex;

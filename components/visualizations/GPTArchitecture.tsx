@@ -33,8 +33,8 @@ interface TransformerLayer {
 
 const NUM_LAYERS = 3;
 const NUM_HEADS = 3;
-const EMBEDDING_DIM = 64;
-const HEAD_DIM = EMBEDDING_DIM / NUM_HEADS;
+const EMBEDDING_DIM = 63; // Divisible by 3 heads
+const HEAD_DIM = Math.floor(EMBEDDING_DIM / NUM_HEADS);
 
 const HEAD_COLORS = ["#FF6B6B", "#4ECDC4", "#FFE66D"];
 const LAYER_COLORS = ["#6366F1", "#8B5CF6", "#EC4899"];
