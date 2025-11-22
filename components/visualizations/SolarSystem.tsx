@@ -1,1153 +1,1277 @@
-'use client';
+"use client";
 
-import React, {
-  useCallback,
-  useEffect,
-  useMemo,
-  useRef,
-  useState
-} from 'react';
+import { useCallback, useEffect, useRef, useState } from "react";
 
-type Ring = {
-  inner: number;
-  outer: number;
-  tilt_deg: number;
-};
+// =============================================================================
+// ASTRONOMICAL DATA (J2000 Epoch)
+// All distances in AU, radii in km, periods in Earth days
+// =============================================================================
 
-type Body = {
+interface CelestialBody {
   name: string;
-  type: 'star' | 'planet';
-  color: string;
-  color2: string;
-  sma_au: number;
-  radius_km: number;
-  period_days: number;
-  ring: Ring | null;
+  type: "star" | "planet" | "dwarf";
+  radius: number;
+  semiMajorAxis: number;
   eccentricity: number;
-  perihelion_deg: number;
-};
+  orbitalPeriod: number;
+  perihelionArg: number;
+  meanAnomaly: number;
+  inclination: number;
+  color: string;
+  glowColor: string;
+  description: string;
+  moons?: number;
+  rings?: { inner: number; outer: number; color: string; opacity: number }[];
+  atmosphere?: string;
+  surfaceFeatures?: string[];
+}
 
-type Point = { x: number; y: number };
-
-type CameraAnim = {
-  start: { x: number; y: number; zoom: number };
-  end: { x: number; y: number; zoom: number };
-  t0: number;
-  dur: number;
-};
-
-type TrailMap = Record<string, Point[]>;
-
-type SolarSystemProps = {
-  height?: React.CSSProperties['height'];
-  initialZoom?: number;
-  initialSpeed?: number;
-  className?: string;
-  style?: React.CSSProperties;
-};
-
-const AU_KM = 149_597_870.7;
-const TAU = Math.PI * 2;
-const ZOOM_MIN = 0.02;
-const ZOOM_MAX = 200_000;
-const ZOOM_SLIDER_EXP = 3.4;
-const SPEED_MIN = 0;
-const SPEED_MAX = 20_000;
-
-/**
- * SolarSystem
- * High-fidelity solar system scale visualization focused on physical accuracy.
- *
- * Props:
- *  - height: CSS height for the component container (default: '100vh')
- *  - initialZoom: number (0.02..200000, default 1)
- *  - initialSpeed: number (days/second, default 250)
- *  - className: optional wrapper class
- *  - style: optional wrapper style
- */
-export default function SolarSystem({
-  height = '100vh',
-  initialZoom = 1,
-  initialSpeed = 250,
-  className,
-  style
-}: SolarSystemProps) {
-  const BODIES = useMemo<Body[]>(
-    () => [
-      {
-        name: 'Sun',
-        type: 'star',
-        color: '#ffde8a',
-        color2: '#ff9f3b',
-        sma_au: 0,
-        radius_km: 695_700,
-        period_days: Number.POSITIVE_INFINITY,
-        ring: null,
-        eccentricity: 0,
-        perihelion_deg: 0
-      },
-      {
-        name: 'Mercury',
-        type: 'planet',
-        color: '#c0b7b1',
-        color2: '#8e8a86',
-        sma_au: 0.387098,
-        radius_km: 2439.7,
-        period_days: 87.969,
-        ring: null,
-        eccentricity: 0.20563,
-        perihelion_deg: 77.4578
-      },
-      {
-        name: 'Venus',
-        type: 'planet',
-        color: '#e6d7a3',
-        color2: '#cdb788',
-        sma_au: 0.723332,
-        radius_km: 6051.8,
-        period_days: 224.701,
-        ring: null,
-        eccentricity: 0.006772,
-        perihelion_deg: 131.6025
-      },
-      {
-        name: 'Earth',
-        type: 'planet',
-        color: '#6bb6ff',
-        color2: '#2f84ff',
-        sma_au: 1,
-        radius_km: 6371,
-        period_days: 365.256,
-        ring: null,
-        eccentricity: 0.016710,
-        perihelion_deg: 102.9377
-      },
-      {
-        name: 'Mars',
-        type: 'planet',
-        color: '#e6733e',
-        color2: '#c14b1c',
-        sma_au: 1.523679,
-        radius_km: 3389.5,
-        period_days: 686.98,
-        ring: null,
-        eccentricity: 0.093394,
-        perihelion_deg: 336.0408
-      },
-      {
-        name: 'Jupiter',
-        type: 'planet',
-        color: '#d2b48c',
-        color2: '#c08c57',
-        sma_au: 5.2044,
-        radius_km: 69_911,
-        period_days: 4332.589,
-        ring: null,
-        eccentricity: 0.048386,
-        perihelion_deg: 14.7539
-      },
-      {
-        name: 'Saturn',
-        type: 'planet',
-        color: '#ecdcb2',
-        color2: '#d0b98a',
-        sma_au: 9.5826,
-        radius_km: 58_232,
-        period_days: 10_759.22,
-        ring: { inner: 1.15, outer: 2.41, tilt_deg: 26.7 },
-        eccentricity: 0.053862,
-        perihelion_deg: 92.4319
-      },
-      {
-        name: 'Uranus',
-        type: 'planet',
-        color: '#7ad7f0',
-        color2: '#6dbdd8',
-        sma_au: 19.2184,
-        radius_km: 25_362,
-        period_days: 30_685.4,
-        ring: { inner: 1.6, outer: 2, tilt_deg: 97.8 },
-        eccentricity: 0.047257,
-        perihelion_deg: 170.9642
-      },
-      {
-        name: 'Neptune',
-        type: 'planet',
-        color: '#4c77ff',
-        color2: '#3158d6',
-        sma_au: 30.11,
-        radius_km: 24_622,
-        period_days: 60_190,
-        ring: null,
-        eccentricity: 0.008590,
-        perihelion_deg: 44.9714
-      }
+const BODIES: CelestialBody[] = [
+  {
+    name: "Sun",
+    type: "star",
+    radius: 696340,
+    semiMajorAxis: 0,
+    eccentricity: 0,
+    orbitalPeriod: 0,
+    perihelionArg: 0,
+    meanAnomaly: 0,
+    inclination: 0,
+    color: "#FDB813",
+    glowColor: "#FF6B00",
+    description: "Our star, containing 99.86% of the solar system's mass",
+    atmosphere: "Plasma - hydrogen and helium",
+    surfaceFeatures: ["Sunspots", "Solar flares", "Corona"],
+  },
+  {
+    name: "Mercury",
+    type: "planet",
+    radius: 2439.7,
+    semiMajorAxis: 0.387,
+    eccentricity: 0.2056,
+    orbitalPeriod: 87.97,
+    perihelionArg: 29.124,
+    meanAnomaly: 174.796,
+    inclination: 7.0,
+    color: "#B5A7A7",
+    glowColor: "#8B7D7D",
+    description: "Smallest planet, extreme temperature swings",
+    surfaceFeatures: ["Caloris Basin", "Scarps", "Craters"],
+  },
+  {
+    name: "Venus",
+    type: "planet",
+    radius: 6051.8,
+    semiMajorAxis: 0.723,
+    eccentricity: 0.0068,
+    orbitalPeriod: 224.7,
+    perihelionArg: 54.884,
+    meanAnomaly: 50.115,
+    inclination: 3.39,
+    color: "#E6C87A",
+    glowColor: "#D4A84B",
+    description: "Hottest planet due to runaway greenhouse effect",
+    atmosphere: "96% CO2, sulfuric acid clouds",
+    surfaceFeatures: ["Maxwell Montes", "Ishtar Terra", "Volcanic plains"],
+  },
+  {
+    name: "Earth",
+    type: "planet",
+    radius: 6371,
+    semiMajorAxis: 1.0,
+    eccentricity: 0.0167,
+    orbitalPeriod: 365.25,
+    perihelionArg: 114.208,
+    meanAnomaly: 358.617,
+    inclination: 0,
+    color: "#6B93D6",
+    glowColor: "#4A7FC1",
+    description: "Our home - the only known world with life",
+    moons: 1,
+    atmosphere: "78% N2, 21% O2",
+    surfaceFeatures: ["Oceans", "Continents", "Ice caps"],
+  },
+  {
+    name: "Mars",
+    type: "planet",
+    radius: 3389.5,
+    semiMajorAxis: 1.524,
+    eccentricity: 0.0934,
+    orbitalPeriod: 686.98,
+    perihelionArg: 286.502,
+    meanAnomaly: 19.373,
+    inclination: 1.85,
+    color: "#C1440E",
+    glowColor: "#8B2500",
+    description: "The Red Planet - target for human exploration",
+    moons: 2,
+    atmosphere: "95% CO2, thin",
+    surfaceFeatures: ["Olympus Mons", "Valles Marineris", "Polar ice caps"],
+  },
+  {
+    name: "Jupiter",
+    type: "planet",
+    radius: 69911,
+    semiMajorAxis: 5.203,
+    eccentricity: 0.0489,
+    orbitalPeriod: 4332.59,
+    perihelionArg: 273.867,
+    meanAnomaly: 20.02,
+    inclination: 1.31,
+    color: "#D8CA9D",
+    glowColor: "#C4A35A",
+    description: "Largest planet - more massive than all others combined",
+    moons: 95,
+    atmosphere: "H2 and He with ammonia clouds",
+    surfaceFeatures: ["Great Red Spot", "Cloud bands", "Storms"],
+    rings: [{ inner: 1.29, outer: 1.8, color: "#8B7355", opacity: 0.15 }],
+  },
+  {
+    name: "Saturn",
+    type: "planet",
+    radius: 58232,
+    semiMajorAxis: 9.537,
+    eccentricity: 0.0565,
+    orbitalPeriod: 10759.22,
+    perihelionArg: 339.392,
+    meanAnomaly: 317.02,
+    inclination: 2.49,
+    color: "#F4D59E",
+    glowColor: "#DAB86F",
+    description: "The ringed planet - lowest density of any planet",
+    moons: 146,
+    atmosphere: "H2 and He",
+    surfaceFeatures: ["Hexagonal storm", "Cloud bands"],
+    rings: [
+      { inner: 1.11, outer: 1.24, color: "#A09080", opacity: 0.2 },
+      { inner: 1.24, outer: 1.525, color: "#C8B898", opacity: 0.5 },
+      { inner: 1.525, outer: 1.95, color: "#E8D8C8", opacity: 0.85 },
+      { inner: 2.02, outer: 2.27, color: "#D8C8B8", opacity: 0.7 },
+      { inner: 2.32, outer: 2.37, color: "#B8A898", opacity: 0.3 },
     ],
-    []
-  );
+  },
+  {
+    name: "Uranus",
+    type: "planet",
+    radius: 25362,
+    semiMajorAxis: 19.191,
+    eccentricity: 0.0472,
+    orbitalPeriod: 30688.5,
+    perihelionArg: 96.998,
+    meanAnomaly: 142.238,
+    inclination: 0.77,
+    color: "#B5E3E3",
+    glowColor: "#7CC4C4",
+    description: "Ice giant tilted 98 degrees - rolls around the Sun",
+    moons: 28,
+    atmosphere: "H2, He, methane",
+    surfaceFeatures: ["Faint cloud bands", "Dark spot"],
+    rings: [{ inner: 1.64, outer: 2.0, color: "#4A5568", opacity: 0.25 }],
+  },
+  {
+    name: "Neptune",
+    type: "planet",
+    radius: 24622,
+    semiMajorAxis: 30.07,
+    eccentricity: 0.0086,
+    orbitalPeriod: 60182,
+    perihelionArg: 276.336,
+    meanAnomaly: 256.228,
+    inclination: 1.77,
+    color: "#5B7FDE",
+    glowColor: "#3A5BB8",
+    description: "Windiest planet - storms up to 2,100 km/h",
+    moons: 16,
+    atmosphere: "H2, He, methane",
+    surfaceFeatures: ["Great Dark Spot", "Scooter clouds"],
+    rings: [{ inner: 1.69, outer: 2.54, color: "#4A5568", opacity: 0.15 }],
+  },
+  {
+    name: "Pluto",
+    type: "dwarf",
+    radius: 1188.3,
+    semiMajorAxis: 39.482,
+    eccentricity: 0.2488,
+    orbitalPeriod: 90560,
+    perihelionArg: 113.834,
+    meanAnomaly: 14.53,
+    inclination: 17.16,
+    color: "#C9B8A5",
+    glowColor: "#9A8B7A",
+    description: "Heart-shaped glacier, thin nitrogen atmosphere",
+    moons: 5,
+    surfaceFeatures: ["Tombaugh Regio", "Sputnik Planitia"],
+  },
+];
 
-  const MAX_AU = useMemo(
-    () => Math.max(...BODIES.map((body) => body.sma_au * (1 + body.eccentricity))),
-    [BODIES]
-  );
+// =============================================================================
+// CONSTANTS & UTILITIES
+// =============================================================================
 
-  const wrapRef = useRef<HTMLDivElement | null>(null);
-  const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const ctxRef = useRef<CanvasRenderingContext2D | null>(null);
-  const sizeRef = useRef({ w: 0, h: 0, dpr: 1 });
-  const rafRef = useRef(0);
-  const draggingRef = useRef({ active: false, lastX: 0, lastY: 0 });
-  const cameraAnimRef = useRef<CameraAnim | null>(null);
-  const starsRef = useRef<Array<{ x: number; y: number; r: number; a: number }>>([]);
-  const trailRef = useRef<TrailMap>({});
+const AU_TO_PX = 80;
+const SUN_DISPLAY_RADIUS = 25;
+const MIN_PLANET_RADIUS = 3;
+const MAX_PLANET_RADIUS = 18;
+
+function solveKepler(M: number, e: number, tolerance = 1e-8): number {
+  let E = M;
+  for (let i = 0; i < 100; i++) {
+    const dE = (E - e * Math.sin(E) - M) / (1 - e * Math.cos(E));
+    E -= dE;
+    if (Math.abs(dE) < tolerance) break;
+  }
+  return E;
+}
+
+function trueAnomaly(E: number, e: number): number {
+  return 2 * Math.atan2(
+    Math.sqrt(1 + e) * Math.sin(E / 2),
+    Math.sqrt(1 - e) * Math.cos(E / 2)
+  );
+}
+
+function getOrbitalPosition(
+  body: CelestialBody,
+  daysSinceEpoch: number
+): { x: number; y: number; r: number } {
+  if (body.semiMajorAxis === 0) return { x: 0, y: 0, r: 0 };
+
+  const n = (2 * Math.PI) / body.orbitalPeriod;
+  const M0 = (body.meanAnomaly * Math.PI) / 180;
+  const M = M0 + n * daysSinceEpoch;
+
+  const e = body.eccentricity;
+  const E = solveKepler(M, e);
+  const v = trueAnomaly(E, e);
+
+  const r = (body.semiMajorAxis * (1 - e * e)) / (1 + e * Math.cos(v));
+  const omega = (body.perihelionArg * Math.PI) / 180;
+
+  return {
+    x: r * Math.cos(v + omega),
+    y: r * Math.sin(v + omega),
+    r,
+  };
+}
+
+function scaleRadius(radius: number, isSun: boolean): number {
+  if (isSun) return SUN_DISPLAY_RADIUS;
+  const scaled = Math.log10(radius / 1000 + 1) * 8;
+  return Math.max(MIN_PLANET_RADIUS, Math.min(MAX_PLANET_RADIUS, scaled));
+}
+
+function lightenColor(color: string, amount: number): string {
+  const num = parseInt(color.slice(1), 16);
+  const r = Math.min(255, (num >> 16) + amount);
+  const g = Math.min(255, ((num >> 8) & 0x00ff) + amount);
+  const b = Math.min(255, (num & 0x0000ff) + amount);
+  return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
+}
+
+function darkenColor(color: string, amount: number): string {
+  const num = parseInt(color.slice(1), 16);
+  const r = Math.max(0, (num >> 16) - amount);
+  const g = Math.max(0, ((num >> 8) & 0x00ff) - amount);
+  const b = Math.max(0, (num & 0x0000ff) - amount);
+  return "#" + (1 << 24 | r << 16 | g << 8 | b).toString(16).slice(1);
+}
+
+// =============================================================================
+// MAIN COMPONENT
+// =============================================================================
+
+interface Props {
+  height?: string;
+}
+
+export default function SolarSystem({ height = "600px" }: Props) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
+  const animationRef = useRef<number>(0);
+
+  const [dimensions, setDimensions] = useState({ width: 800, height: 600 });
+  const [zoom, setZoom] = useState(1);
+  const [offset, setOffset] = useState({ x: 0, y: 0 });
+  const [time, setTime] = useState(0);
+  const [speed, setSpeed] = useState(1);
+  const [isPaused, setIsPaused] = useState(false);
+  const [focusedBody, setFocusedBody] = useState<string | null>(null);
+  const [hoveredBody, setHoveredBody] = useState<string | null>(null);
+  const [showOrbits, setShowOrbits] = useState(true);
+  const [showLabels, setShowLabels] = useState(true);
+  const [isFullscreen, setIsFullscreen] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
+  const [dragStart, setDragStart] = useState({ x: 0, y: 0 });
 
   const stateRef = useRef({
-    paused: false,
+    zoom: 1,
+    offset: { x: 0, y: 0 },
+    time: 0,
+    speed: 1,
+    isPaused: false,
+    focusedBody: null as string | null,
     showOrbits: true,
     showLabels: true,
-    showTrails: false,
-    zoom: initialZoom,
-    baseScale: 18,
-    speed: initialSpeed,
-    timeDays: 0,
-    camera: { x: 0, y: 0 },
-    focus: 'Sun',
-    lastFrameMs: 0
   });
 
-  const [zoom, setZoom] = useState(initialZoom);
-  const [speed, setSpeed] = useState(initialSpeed);
-  const [focus, setFocus] = useState('Sun');
-  const [paused, setPaused] = useState(false);
-  const [isFullscreen, setIsFullscreen] = useState(false);
-  const [controlsCollapsed, setControlsCollapsed] = useState(false);
+  useEffect(() => {
+    stateRef.current = { zoom, offset, time, speed, isPaused, focusedBody, showOrbits, showLabels };
+  }, [zoom, offset, time, speed, isPaused, focusedBody, showOrbits, showLabels]);
 
-  const toScreen = useCallback((x: number, y: number) => {
-    const { w, h } = sizeRef.current;
-    const state = stateRef.current;
-    const scale = state.baseScale * state.zoom;
-    return { x: (x - state.camera.x) * scale + w / 2, y: (y - state.camera.y) * scale + h / 2 };
-  }, []);
-
-  const toWorld = useCallback((px: number, py: number) => {
-    const { w, h } = sizeRef.current;
-    const state = stateRef.current;
-    const scale = state.baseScale * state.zoom;
-    return { x: (px - w / 2) / scale + state.camera.x, y: (py - h / 2) / scale + state.camera.y };
-  }, []);
-
-  const bodyByName = useCallback(
-    (name: string) => BODIES.find((b) => b.name === name),
-    [BODIES]
-  );
-
-  const bodyPositionAUprime = useCallback((body: Body | undefined, tDays: number) => {
-    if (!body || body.name === 'Sun') return { x: 0, y: 0 };
-    const a = body.sma_au;
-    const e = body.eccentricity;
-    if (e === 0) {
-      const angle = TAU * ((tDays % body.period_days) / body.period_days);
-      return { x: a * Math.cos(angle), y: a * Math.sin(angle) };
-    }
-
-    const meanMotion = TAU / body.period_days;
-    const meanAnomaly = normalizeAngle(meanMotion * tDays);
-    const eccentricAnomaly = solveKepler(meanAnomaly, e);
-    const cosE = Math.cos(eccentricAnomaly);
-    const sinE = Math.sin(eccentricAnomaly);
-    const xPrime = a * (cosE - e);
-    const yPrime = a * Math.sqrt(1 - e * e) * sinE;
-    const omega = toRadians(body.perihelion_deg);
-    const cosO = Math.cos(omega);
-    const sinO = Math.sin(omega);
-    return {
-      x: xPrime * cosO - yPrime * sinO,
-      y: xPrime * sinO + yPrime * cosO
-    };
-  }, []);
-
-  const planetPixelRadius = useCallback((body: Body) => {
-    const { baseScale, zoom } = stateRef.current;
-    const pixelsPerAU = baseScale * zoom;
-    return (body.radius_km / AU_KM) * pixelsPerAU;
-  }, []);
-
-  const fitAll = useCallback(() => {
-    const { w, h } = sizeRef.current;
-    const maxR = MAX_AU;
-    const pad = 0.1;
-    const usable = Math.min(w, h) * (1 - pad * 2);
-    const scale = usable / (2 * maxR);
-    stateRef.current.baseScale = Math.max(6, scale);
-  }, [MAX_AU]);
-
-  const focusBody = useCallback(
-    (name: string, animate = true) => {
-      const state = stateRef.current;
-      const target = bodyByName(name) ?? BODIES[0];
-      state.focus = target.name;
-      setFocus(target.name);
-
-      const pos = bodyPositionAUprime(target, state.timeDays);
-      const { w, h } = sizeRef.current;
-      const viewportMin = Math.max(320, Math.min(w, h));
-      const radiusAU = target.radius_km / AU_KM;
-      const bodyScale = Math.max(radiusAU * state.baseScale, 1e-9);
-      const preferredPx = target.name === 'Sun'
-        ? Math.max(viewportMin * 0.28, 220)
-        : Math.max(24, Math.min(viewportMin * 0.22, 120));
-      let desiredZoom = clamp(preferredPx / bodyScale, ZOOM_MIN, ZOOM_MAX);
-
-      if (animate) {
-        cameraAnimRef.current = {
-          start: { x: state.camera.x, y: state.camera.y, zoom: state.zoom },
-          end: { x: pos.x, y: pos.y, zoom: desiredZoom },
-          t0: performance.now(),
-          dur: 500
-        };
-      } else {
-        state.camera.x = pos.x;
-        state.camera.y = pos.y;
-        state.zoom = desiredZoom;
-        setZoom(desiredZoom);
+  useEffect(() => {
+    const updateDimensions = () => {
+      if (containerRef.current) {
+        const rect = containerRef.current.getBoundingClientRect();
+        setDimensions({ width: rect.width, height: rect.height });
       }
+    };
+    updateDimensions();
+    window.addEventListener("resize", updateDimensions);
+    return () => window.removeEventListener("resize", updateDimensions);
+  }, []);
+
+  const worldToScreen = useCallback(
+    (x: number, y: number, state: typeof stateRef.current) => {
+      const cx = dimensions.width / 2;
+      const cy = dimensions.height / 2;
+      return {
+        x: cx + (x * AU_TO_PX * state.zoom) + state.offset.x,
+        y: cy + (y * AU_TO_PX * state.zoom) + state.offset.y,
+      };
     },
-    [BODIES, bodyByName, bodyPositionAUprime]
+    [dimensions]
   );
 
   const drawStarfield = useCallback((ctx: CanvasRenderingContext2D) => {
-    const { w, h } = sizeRef.current;
-    const state = stateRef.current;
-    const par = 0.08;
-    ctx.save();
-    ctx.translate(
-      w / 2 - state.camera.x * state.baseScale * state.zoom * par,
-      h / 2 - state.camera.y * state.baseScale * state.zoom * par
+    const gradient = ctx.createRadialGradient(
+      dimensions.width / 2, dimensions.height / 2, 0,
+      dimensions.width / 2, dimensions.height / 2, Math.max(dimensions.width, dimensions.height)
     );
-    ctx.scale(state.baseScale * 0.02, state.baseScale * 0.02);
-    for (const star of starsRef.current) {
-      ctx.globalAlpha = star.a;
-      ctx.fillStyle = '#ffffff';
-      ctx.fillRect(star.x, star.y, star.r, star.r);
-    }
-    ctx.restore();
-    ctx.globalAlpha = 1;
-  }, []);
-
-  const drawSunGlow = useCallback((ctx: CanvasRenderingContext2D, px: number, py: number, radius: number) => {
-    const glowRadius = Math.max(radius * 60, 140);
-    const gradient = ctx.createRadialGradient(px, py, 0, px, py, glowRadius);
-    gradient.addColorStop(0, 'rgba(255,220,120,0.35)');
-    gradient.addColorStop(1, 'rgba(255,165,60,0)');
+    gradient.addColorStop(0, "#0a0a12");
+    gradient.addColorStop(0.5, "#050510");
+    gradient.addColorStop(1, "#000005");
     ctx.fillStyle = gradient;
-    ctx.beginPath();
-    ctx.arc(px, py, glowRadius, 0, Math.PI * 2);
-    ctx.fill();
-  }, []);
+    ctx.fillRect(0, 0, dimensions.width, dimensions.height);
+
+    const starColors = ["#FFFFFF", "#FFE4C4", "#B0C4DE", "#FFD700", "#FFA07A"];
+    const seed = 12345;
+    const random = (i: number) => {
+      const x = Math.sin(seed + i * 9301 + 49297) * 233280;
+      return x - Math.floor(x);
+    };
+
+    for (let i = 0; i < 400; i++) {
+      const x = random(i) * dimensions.width;
+      const y = random(i + 1000) * dimensions.height;
+      const size = random(i + 2000) * 1.5 + 0.5;
+      const brightness = random(i + 3000) * 0.7 + 0.3;
+      const colorIndex = Math.floor(random(i + 4000) * starColors.length);
+
+      ctx.globalAlpha = brightness;
+      ctx.fillStyle = starColors[colorIndex];
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+
+      if (random(i + 5000) > 0.9) {
+        const twinkle = Math.sin(Date.now() / 1000 + i) * 0.3 + 0.7;
+        ctx.globalAlpha = brightness * twinkle * 0.5;
+        ctx.beginPath();
+        ctx.arc(x, y, size * 2, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+  }, [dimensions]);
 
   const drawOrbit = useCallback(
-    (ctx: CanvasRenderingContext2D, body: Body) => {
-      if (body.name === 'Sun' || !stateRef.current.showOrbits) return;
-      const e = body.eccentricity;
-      const omega = toRadians(body.perihelion_deg);
-      const cosO = Math.cos(omega);
-      const sinO = Math.sin(omega);
-      const scale = stateRef.current.baseScale * stateRef.current.zoom;
-      const segments = 256;
+    (ctx: CanvasRenderingContext2D, body: CelestialBody, state: typeof stateRef.current) => {
+      if (body.semiMajorAxis === 0) return;
 
-      ctx.strokeStyle = 'rgba(255,255,255,0.08)';
-      ctx.lineWidth = 1;
+      const a = body.semiMajorAxis;
+      const e = body.eccentricity;
+      const omega = (body.perihelionArg * Math.PI) / 180;
+
+      ctx.save();
+      ctx.strokeStyle = body.type === "dwarf" ? "rgba(100, 100, 120, 0.3)" : "rgba(80, 100, 140, 0.4)";
+      ctx.lineWidth = body.type === "dwarf" ? 0.5 : 1;
+      ctx.setLineDash(body.type === "dwarf" ? [5, 5] : []);
+
       ctx.beginPath();
-      for (let i = 0; i <= segments; i++) {
-        const M = (TAU * i) / segments;
-        const E = e === 0 ? M : solveKepler(M, e);
-        const cosE = Math.cos(E);
-        const sinE = Math.sin(E);
-        const xPrime = body.sma_au * (cosE - e);
-        const yPrime = body.sma_au * Math.sqrt(1 - e * e) * sinE;
-        const x = xPrime * cosO - yPrime * sinO;
-        const y = xPrime * sinO + yPrime * cosO;
-        const screen = toScreen(x, y);
+      for (let i = 0; i <= 360; i += 2) {
+        const angle = (i * Math.PI) / 180;
+        const r = (a * (1 - e * e)) / (1 + e * Math.cos(angle));
+        const x = r * Math.cos(angle + omega);
+        const y = r * Math.sin(angle + omega);
+        const screen = worldToScreen(x, y, state);
+
         if (i === 0) ctx.moveTo(screen.x, screen.y);
         else ctx.lineTo(screen.x, screen.y);
       }
+      ctx.closePath();
       ctx.stroke();
+      ctx.restore();
     },
-    [toScreen]
+    [worldToScreen]
   );
 
-  const drawRing = useCallback(
-    (ctx: CanvasRenderingContext2D, body: Body, px: number, py: number, pr: number) => {
-      if (!body.ring) return;
-      const inner = pr * body.ring.inner;
-      const outer = pr * body.ring.outer;
+  const drawRings = useCallback(
+    (
+      ctx: CanvasRenderingContext2D,
+      body: CelestialBody,
+      screenX: number,
+      screenY: number,
+      displayRadius: number
+    ) => {
+      if (!body.rings) return;
+
       ctx.save();
-      ctx.translate(px, py);
-      ctx.rotate(-Math.PI / 7);
-      const ry = Math.cos((body.ring.tilt_deg * Math.PI) / 180);
-      ctx.scale(1, ry);
+      const tilt = 0.4;
 
-      ctx.beginPath();
-      ctx.ellipse(0, 0, outer, outer, 0, 0, Math.PI * 2);
-      ctx.clip();
+      for (const ring of body.rings) {
+        const innerRadius = displayRadius * ring.inner;
+        const outerRadius = displayRadius * ring.outer;
 
-      const gradient = ctx.createRadialGradient(0, 0, inner * 0.8, 0, 0, outer);
-      gradient.addColorStop(0, 'rgba(255,255,255,0)');
-      gradient.addColorStop(0.4, 'rgba(255,255,255,0.20)');
-      gradient.addColorStop(0.9, 'rgba(255,255,255,0.03)');
-      gradient.addColorStop(1, 'rgba(255,255,255,0)');
-      ctx.strokeStyle = gradient;
-      ctx.lineWidth = Math.max(1, outer - inner);
-      ctx.beginPath();
-      ctx.ellipse(0, 0, (inner + outer) / 2, (inner + outer) / 2, 0, 0, Math.PI * 2);
-      ctx.stroke();
+        ctx.beginPath();
+        ctx.ellipse(screenX, screenY, outerRadius, outerRadius * tilt, 0, 0, Math.PI * 2);
+        ctx.ellipse(screenX, screenY, innerRadius, innerRadius * tilt, 0, Math.PI * 2, 0);
 
+        const gradient = ctx.createRadialGradient(
+          screenX, screenY, innerRadius,
+          screenX, screenY, outerRadius
+        );
+        gradient.addColorStop(0, ring.color + "00");
+        gradient.addColorStop(0.2, ring.color);
+        gradient.addColorStop(0.8, ring.color);
+        gradient.addColorStop(1, ring.color + "00");
+
+        ctx.fillStyle = gradient;
+        ctx.globalAlpha = ring.opacity;
+        ctx.fill("evenodd");
+      }
       ctx.restore();
+      ctx.globalAlpha = 1;
     },
     []
   );
 
   const drawBody = useCallback(
-    (ctx: CanvasRenderingContext2D, body: Body) => {
-      const state = stateRef.current;
-      const planetPos = bodyPositionAUprime(body, state.timeDays);
-      const point = toScreen(planetPos.x, planetPos.y);
-      const radius = planetPixelRadius(body);
+    (
+      ctx: CanvasRenderingContext2D,
+      body: CelestialBody,
+      state: typeof stateRef.current,
+      positions: Map<string, { x: number; y: number; screenX: number; screenY: number; radius: number }>
+    ) => {
+      const pos = getOrbitalPosition(body, state.time);
+      const screen = worldToScreen(pos.x, pos.y, state);
+      const displayRadius = scaleRadius(body.radius, body.type === "star") * Math.sqrt(state.zoom);
 
-      if (body.name === 'Sun') drawSunGlow(ctx, point.x, point.y, radius);
+      positions.set(body.name, {
+        x: pos.x,
+        y: pos.y,
+        screenX: screen.x,
+        screenY: screen.y,
+        radius: displayRadius,
+      });
 
-      const gradient = ctx.createRadialGradient(
-        point.x - radius * 0.3,
-        point.y - radius * 0.3,
-        radius * 0.1,
-        point.x,
-        point.y,
-        radius * 1.2
+      // Draw rings behind planet (back half)
+      if (body.rings) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, 0, dimensions.width, screen.y);
+        ctx.clip();
+        drawRings(ctx, body, screen.x, screen.y, displayRadius);
+        ctx.restore();
+      }
+
+      // Glow effect
+      if (body.type === "star") {
+        const coronaGradient = ctx.createRadialGradient(
+          screen.x, screen.y, displayRadius * 0.8,
+          screen.x, screen.y, displayRadius * 4
+        );
+        coronaGradient.addColorStop(0, "rgba(255, 200, 100, 0.6)");
+        coronaGradient.addColorStop(0.3, "rgba(255, 150, 50, 0.3)");
+        coronaGradient.addColorStop(0.6, "rgba(255, 100, 0, 0.1)");
+        coronaGradient.addColorStop(1, "rgba(255, 50, 0, 0)");
+
+        ctx.fillStyle = coronaGradient;
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, displayRadius * 4, 0, Math.PI * 2);
+        ctx.fill();
+
+        const flareCount = 8;
+        for (let i = 0; i < flareCount; i++) {
+          const angle = (i / flareCount) * Math.PI * 2 + state.time * 0.001;
+          const flareLength = displayRadius * (1.5 + Math.sin(state.time * 0.05 + i) * 0.5);
+
+          const flareGradient = ctx.createLinearGradient(
+            screen.x, screen.y,
+            screen.x + Math.cos(angle) * flareLength,
+            screen.y + Math.sin(angle) * flareLength
+          );
+          flareGradient.addColorStop(0, "rgba(255, 200, 100, 0.4)");
+          flareGradient.addColorStop(1, "rgba(255, 100, 0, 0)");
+
+          ctx.strokeStyle = flareGradient;
+          ctx.lineWidth = 3;
+          ctx.beginPath();
+          ctx.moveTo(
+            screen.x + Math.cos(angle) * displayRadius,
+            screen.y + Math.sin(angle) * displayRadius
+          );
+          ctx.lineTo(
+            screen.x + Math.cos(angle) * flareLength,
+            screen.y + Math.sin(angle) * flareLength
+          );
+          ctx.stroke();
+        }
+      } else {
+        const glowGradient = ctx.createRadialGradient(
+          screen.x, screen.y, displayRadius * 0.5,
+          screen.x, screen.y, displayRadius * 2.5
+        );
+        glowGradient.addColorStop(0, body.glowColor + "40");
+        glowGradient.addColorStop(1, body.glowColor + "00");
+
+        ctx.fillStyle = glowGradient;
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, displayRadius * 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // Main body
+      const bodyGradient = ctx.createRadialGradient(
+        screen.x - displayRadius * 0.3,
+        screen.y - displayRadius * 0.3,
+        0,
+        screen.x,
+        screen.y,
+        displayRadius
       );
-      gradient.addColorStop(0, body.color);
-      gradient.addColorStop(0.5, body.color2);
-      gradient.addColorStop(1, 'rgba(0,0,0,0.6)');
-      ctx.fillStyle = gradient;
+
+      if (body.type === "star") {
+        bodyGradient.addColorStop(0, "#FFFFFF");
+        bodyGradient.addColorStop(0.2, "#FFF5E0");
+        bodyGradient.addColorStop(0.6, body.color);
+        bodyGradient.addColorStop(1, body.glowColor);
+      } else {
+        bodyGradient.addColorStop(0, lightenColor(body.color, 40));
+        bodyGradient.addColorStop(0.5, body.color);
+        bodyGradient.addColorStop(1, darkenColor(body.color, 40));
+      }
+
+      ctx.fillStyle = bodyGradient;
       ctx.beginPath();
-      ctx.arc(point.x, point.y, radius, 0, Math.PI * 2);
+      ctx.arc(screen.x, screen.y, displayRadius, 0, Math.PI * 2);
       ctx.fill();
 
-      ctx.strokeStyle = 'rgba(255,255,255,0.12)';
-      ctx.lineWidth = Math.max(1, radius * 0.05);
-      ctx.beginPath();
-      ctx.arc(point.x, point.y, radius, 0.15 * Math.PI, 0.85 * Math.PI);
-      ctx.stroke();
-
-      if (body.ring) drawRing(ctx, body, point.x, point.y, radius);
-
-      if (state.showLabels) {
-        ctx.font = '12px system-ui, -apple-system, Segoe UI, Roboto';
-        ctx.fillStyle = 'rgba(255,255,255,0.88)';
-        ctx.textAlign = 'center';
-        ctx.fillText(body.name, point.x, point.y - radius - 6);
-      }
-
-      if (state.showTrails && body.name !== 'Sun') {
-        const key = body.name;
-        if (!trailRef.current[key]) trailRef.current[key] = [];
-        const arr = trailRef.current[key];
-        arr.push({ x: point.x, y: point.y });
-        if (arr.length > 80) arr.shift();
-        ctx.strokeStyle = 'rgba(170,200,255,0.18)';
-        ctx.lineWidth = 1;
+      // Surface details for gas giants
+      if (["Jupiter", "Saturn", "Uranus", "Neptune"].includes(body.name)) {
+        ctx.save();
         ctx.beginPath();
-        arr.forEach((pos, idx) => {
-          if (idx === 0) ctx.moveTo(pos.x, pos.y);
-          else ctx.lineTo(pos.x, pos.y);
-        });
-        ctx.stroke();
+        ctx.arc(screen.x, screen.y, displayRadius, 0, Math.PI * 2);
+        ctx.clip();
+
+        const bandCount = body.name === "Jupiter" ? 8 : 5;
+        for (let i = 0; i < bandCount; i++) {
+          const y = screen.y - displayRadius + (displayRadius * 2 * (i + 0.5)) / bandCount;
+          const bandWidth = (displayRadius * 2) / bandCount;
+
+          ctx.fillStyle = i % 2 === 0
+            ? darkenColor(body.color, 15) + "60"
+            : lightenColor(body.color, 10) + "40";
+          ctx.fillRect(screen.x - displayRadius, y - bandWidth / 2, displayRadius * 2, bandWidth);
+        }
+
+        if (body.name === "Jupiter") {
+          const spotAngle = state.time * 0.1;
+          const spotX = screen.x + Math.cos(spotAngle) * displayRadius * 0.3;
+          const spotY = screen.y + displayRadius * 0.2;
+
+          if (Math.cos(spotAngle) > 0) {
+            ctx.fillStyle = "#CE5A4B";
+            ctx.beginPath();
+            ctx.ellipse(spotX, spotY, displayRadius * 0.25, displayRadius * 0.15, 0, 0, Math.PI * 2);
+            ctx.fill();
+          }
+        }
+
+        ctx.restore();
       }
 
-      return { screen: point, radius, posAU: planetPos };
+      // Earth's continents hint
+      if (body.name === "Earth") {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, displayRadius, 0, Math.PI * 2);
+        ctx.clip();
+
+        ctx.fillStyle = "#5A8C4A60";
+        ctx.beginPath();
+        ctx.ellipse(screen.x - displayRadius * 0.2, screen.y - displayRadius * 0.1, displayRadius * 0.3, displayRadius * 0.4, 0.3, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(screen.x + displayRadius * 0.3, screen.y + displayRadius * 0.2, displayRadius * 0.25, displayRadius * 0.3, -0.2, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#FFFFFF80";
+        ctx.beginPath();
+        ctx.ellipse(screen.x, screen.y - displayRadius * 0.85, displayRadius * 0.4, displayRadius * 0.15, 0, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.beginPath();
+        ctx.ellipse(screen.x, screen.y + displayRadius * 0.85, displayRadius * 0.35, displayRadius * 0.12, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // Mars surface details
+      if (body.name === "Mars") {
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, displayRadius, 0, Math.PI * 2);
+        ctx.clip();
+
+        ctx.fillStyle = "#FFFFFF90";
+        ctx.beginPath();
+        ctx.ellipse(screen.x, screen.y - displayRadius * 0.8, displayRadius * 0.3, displayRadius * 0.1, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.fillStyle = "#8B200030";
+        ctx.beginPath();
+        ctx.ellipse(screen.x + displayRadius * 0.1, screen.y + displayRadius * 0.1, displayRadius * 0.4, displayRadius * 0.3, 0.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        ctx.restore();
+      }
+
+      // Draw rings in front of planet (front half)
+      if (body.rings) {
+        ctx.save();
+        ctx.beginPath();
+        ctx.rect(0, screen.y, dimensions.width, dimensions.height - screen.y);
+        ctx.clip();
+        drawRings(ctx, body, screen.x, screen.y, displayRadius);
+        ctx.restore();
+      }
+
+      // Highlight if hovered or focused
+      const isHighlighted = hoveredBody === body.name || state.focusedBody === body.name;
+      if (isHighlighted) {
+        ctx.strokeStyle = "#FFFFFF";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 4]);
+        ctx.beginPath();
+        ctx.arc(screen.x, screen.y, displayRadius + 5, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+
+      // Label
+      if (state.showLabels && (state.zoom > 0.3 || body.type === "star" || isHighlighted)) {
+        ctx.fillStyle = "#FFFFFF";
+        ctx.font = isHighlighted ? "bold 13px system-ui" : "12px system-ui";
+        ctx.textAlign = "center";
+        ctx.fillText(body.name, screen.x, screen.y + displayRadius + 16);
+      }
     },
-    [bodyPositionAUprime, drawRing, drawSunGlow, planetPixelRadius, toScreen]
+    [dimensions, worldToScreen, drawRings, hoveredBody]
   );
 
-  const drawHUDCrosshair = useCallback((ctx: CanvasRenderingContext2D) => {
-    const center = toScreen(0, 0);
-    ctx.strokeStyle = 'rgba(255,255,255,0.06)';
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(center.x - 8, center.y);
-    ctx.lineTo(center.x + 8, center.y);
-    ctx.moveTo(center.x, center.y - 8);
-    ctx.lineTo(center.x, center.y + 8);
-    ctx.stroke();
-  }, [toScreen]);
-
+  // Main render loop
   useEffect(() => {
     const canvas = canvasRef.current;
-    const wrapper = wrapRef.current;
-    if (!canvas || !wrapper) return;
-    const context = canvas.getContext('2d');
-    if (!context) return;
-    ctxRef.current = context;
+    if (!canvas) return;
 
-    const STAR_COUNT = 800;
-    const stars = Array.from({ length: STAR_COUNT }, () => ({
-      x: rand(-200, 200),
-      y: rand(-200, 200),
-      r: Math.random() < 0.9 ? rand(0.15, 0.6) : rand(0.6, 1.3),
-      a: rand(0.2, 0.85)
-    }));
-    starsRef.current = stars;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
 
-    const resize = () => {
-      const dpr = Math.max(1, Math.min(2, window.devicePixelRatio || 1));
-      const rect = wrapper.getBoundingClientRect();
-      sizeRef.current = { w: Math.floor(rect.width), h: Math.floor(rect.height), dpr };
-      canvas.width = Math.floor(rect.width * dpr);
-      canvas.height = Math.floor(rect.height * dpr);
-      context.setTransform(dpr, 0, 0, dpr, 0, 0);
-      fitAll();
-    };
+    const positions = new Map<string, { x: number; y: number; screenX: number; screenY: number; radius: number }>();
 
-    resize();
-    window.addEventListener('resize', resize);
+    const render = () => {
+      const state = stateRef.current;
 
-    const tick = (now: number) => {
-      const ctx = ctxRef.current;
-      if (!ctx) return;
-      const anim = cameraAnimRef.current;
-      if (anim) {
-        const t = Math.min(1, (now - anim.t0) / anim.dur);
-        const eased = (1 - Math.cos(t * Math.PI)) * 0.5;
-        const state = stateRef.current;
-        state.camera.x = lerp(anim.start.x, anim.end.x, eased);
-        state.camera.y = lerp(anim.start.y, anim.end.y, eased);
-        state.zoom = lerp(anim.start.zoom, anim.end.zoom, eased);
-        setZoom(state.zoom);
-        if (t >= 1) cameraAnimRef.current = null;
+      if (!state.isPaused) {
+        stateRef.current.time += state.speed;
+        setTime(stateRef.current.time);
       }
 
-      const state = stateRef.current;
-      if (!state.lastFrameMs) {
-        state.lastFrameMs = now;
-      }
-      const dt = Math.min(100, now - state.lastFrameMs);
-      state.lastFrameMs = now;
-      if (!state.paused) state.timeDays += (dt / 1000) * state.speed;
+      if (state.focusedBody) {
+        const body = BODIES.find((b) => b.name === state.focusedBody);
+        if (body) {
+          const pos = getOrbitalPosition(body, stateRef.current.time);
+          const targetOffsetX = -pos.x * AU_TO_PX * state.zoom;
+          const targetOffsetY = -pos.y * AU_TO_PX * state.zoom;
 
-      const { w, h } = sizeRef.current;
-      ctx.clearRect(0, 0, w, h);
-      drawStarfield(ctx);
-      if (state.showOrbits) {
-        BODIES.forEach((body) => drawOrbit(ctx, body));
-      }
-
-      const positions: Record<string, { screen: Point; radius: number }> = {};
-      BODIES.forEach((body) => {
-        positions[body.name] = drawBody(ctx, body);
-      });
-
-      drawHUDCrosshair(ctx);
-
-      const focusedBody = bodyByName(state.focus) ?? BODIES[0];
-      const info = positions[focusedBody.name];
-      if (info) {
-        ctx.strokeStyle = 'rgba(106,227,255,0.45)';
-        ctx.lineWidth = 2;
-        ctx.beginPath();
-        ctx.arc(info.screen.x, info.screen.y, info.radius + 6, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      rafRef.current = requestAnimationFrame(tick);
-    };
-
-    rafRef.current = requestAnimationFrame(tick);
-
-    const onPointerDown = (event: PointerEvent) => {
-      draggingRef.current = { active: true, lastX: event.clientX, lastY: event.clientY };
-      canvas.setPointerCapture?.(event.pointerId);
-    };
-
-    const onPointerMove = (event: PointerEvent) => {
-      const dragState = draggingRef.current;
-      if (!dragState.active) return;
-      const state = stateRef.current;
-      const scale = state.baseScale * state.zoom;
-      state.camera.x -= (event.clientX - dragState.lastX) / scale;
-      state.camera.y -= (event.clientY - dragState.lastY) / scale;
-      dragState.lastX = event.clientX;
-      dragState.lastY = event.clientY;
-    };
-
-    const onPointerUp = () => {
-      draggingRef.current.active = false;
-    };
-
-    const onWheel = (event: WheelEvent) => {
-      event.preventDefault();
-      const state = stateRef.current;
-      const { zoom: zoomPrev } = state;
-      const delta = Math.sign(event.deltaY) * -0.08;
-      const zoomNext = clamp(zoomPrev * (1 + delta), ZOOM_MIN, ZOOM_MAX);
-      if (zoomNext === zoomPrev) return;
-
-      const rect = canvas.getBoundingClientRect();
-      const mouseX = event.clientX - rect.left;
-      const mouseY = event.clientY - rect.top;
-      const worldBefore = toWorld(mouseX, mouseY);
-      state.zoom = zoomNext;
-      setZoom(zoomNext);
-      const worldAfter = toWorld(mouseX, mouseY);
-      state.camera.x += worldBefore.x - worldAfter.x;
-      state.camera.y += worldBefore.y - worldAfter.y;
-    };
-
-    const onClick = (event: MouseEvent) => {
-      const state = stateRef.current;
-      const rect = canvas.getBoundingClientRect();
-      const mx = event.clientX - rect.left;
-      const my = event.clientY - rect.top;
-      let best: Body | undefined;
-      let bestDistance = Number.POSITIVE_INFINITY;
-
-      BODIES.forEach((body) => {
-        const pos = bodyPositionAUprime(body, state.timeDays);
-        const point = toScreen(pos.x, pos.y);
-        const radius = planetPixelRadius(body);
-        const distance = Math.hypot(mx - point.x, my - point.y);
-        if (distance < Math.max(10, radius + 6) && distance < bestDistance) {
-          best = body;
-          bestDistance = distance;
+          stateRef.current.offset.x += (targetOffsetX - stateRef.current.offset.x) * 0.08;
+          stateRef.current.offset.y += (targetOffsetY - stateRef.current.offset.y) * 0.08;
+          setOffset({ ...stateRef.current.offset });
         }
-      });
-
-      if (best !== undefined) {
-        focusBody(best.name, true);
       }
+
+      ctx.clearRect(0, 0, dimensions.width, dimensions.height);
+      drawStarfield(ctx);
+
+      if (state.showOrbits) {
+        BODIES.forEach((body) => drawOrbit(ctx, body, state));
+      }
+
+      const sun = BODIES.find((b) => b.type === "star");
+      if (sun) drawBody(ctx, sun, state, positions);
+
+      const otherBodies = BODIES.filter((b) => b.type !== "star")
+        .map((body) => ({
+          body,
+          pos: getOrbitalPosition(body, state.time),
+        }))
+        .sort((a, b) => b.pos.y - a.pos.y);
+
+      otherBodies.forEach(({ body }) => drawBody(ctx, body, state, positions));
+
+      animationRef.current = requestAnimationFrame(render);
     };
 
-    const onKey = (event: KeyboardEvent) => {
-      if (event.code === 'Space') {
-        event.preventDefault();
-        togglePause();
-        return;
-      }
-      const index = '123456789'.indexOf(event.key);
-      if (index >= 0 && index < BODIES.length) {
-        focusBody(BODIES[index].name, true);
-      } else if (event.key === 'f' || event.key === 'F') {
-        fitAll();
-      }
-    };
-
-    canvas.addEventListener('pointerdown', onPointerDown);
-    window.addEventListener('pointermove', onPointerMove);
-    window.addEventListener('pointerup', onPointerUp);
-    canvas.addEventListener('wheel', onWheel, { passive: false });
-    canvas.addEventListener('click', onClick);
-    window.addEventListener('keydown', onKey);
-
-    fitAll();
+    render();
 
     return () => {
-      cancelAnimationFrame(rafRef.current);
-      window.removeEventListener('resize', resize);
-      window.removeEventListener('pointermove', onPointerMove);
-      window.removeEventListener('pointerup', onPointerUp);
-      window.removeEventListener('keydown', onKey);
-      canvas.removeEventListener('pointerdown', onPointerDown);
-      canvas.removeEventListener('wheel', onWheel);
-      canvas.removeEventListener('click', onClick);
+      if (animationRef.current) {
+        cancelAnimationFrame(animationRef.current);
+      }
     };
-  }, [
-    BODIES,
-    bodyByName,
-    bodyPositionAUprime,
-    drawBody,
-    drawHUDCrosshair,
-    drawOrbit,
-    drawStarfield,
-    fitAll,
-    focusBody,
-    planetPixelRadius,
-    toScreen,
-    toWorld
-  ]);
+  }, [dimensions, drawStarfield, drawOrbit, drawBody]);
 
-  useEffect(() => {
-    const update = () => {
-      const wrap = wrapRef.current;
-      const active = wrap ? getFullscreenElement() === wrap : false;
-      setIsFullscreen(active);
-      window.setTimeout(() => {
-        window.dispatchEvent(new Event('resize'));
-      }, 60);
-    };
-
-    document.addEventListener('fullscreenchange', update);
-    document.addEventListener('webkitfullscreenchange' as any, update);
-    update();
-
-    return () => {
-      document.removeEventListener('fullscreenchange', update);
-      document.removeEventListener('webkitfullscreenchange' as any, update);
-    };
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    setZoom((z) => Math.max(0.05, Math.min(50, z * delta)));
   }, []);
 
-  const setZoomBoth = (value: number | string) => {
-    const next = clamp(Number(value), ZOOM_MIN, ZOOM_MAX);
-    setZoom(next);
-    stateRef.current.zoom = next;
-  };
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsDragging(true);
+    setDragStart({ x: e.clientX - offset.x, y: e.clientY - offset.y });
+    setFocusedBody(null);
+  }, [offset]);
 
-  const handleZoomSlider = (value: number | string) => {
-    const slider = Number(value);
-    const actual = sliderToZoom(slider);
-    setZoomBoth(actual);
-  };
+  const handleMouseMove = useCallback(
+    (e: React.MouseEvent) => {
+      if (isDragging) {
+        setOffset({
+          x: e.clientX - dragStart.x,
+          y: e.clientY - dragStart.y,
+        });
+      } else {
+        const canvas = canvasRef.current;
+        if (!canvas) return;
 
-  const setSpeedBoth = (value: number | string) => {
-    const next = clamp(Number(value), SPEED_MIN, SPEED_MAX);
-    setSpeed(next);
-    stateRef.current.speed = next;
-  };
+        const rect = canvas.getBoundingClientRect();
+        const mouseX = e.clientX - rect.left;
+        const mouseY = e.clientY - rect.top;
 
-  const handleSpeedSlider = (value: number | string) => {
-    const slider = Number(value);
-    const actual = sliderToSpeed(slider);
-    setSpeedBoth(actual);
-  };
+        let found: string | null = null;
+        for (const body of BODIES) {
+          const pos = getOrbitalPosition(body, stateRef.current.time);
+          const screen = worldToScreen(pos.x, pos.y, stateRef.current);
+          const displayRadius = scaleRadius(body.radius, body.type === "star") * Math.sqrt(stateRef.current.zoom);
 
-  const togglePause = () => {
-    setPaused((prev) => {
-      stateRef.current.paused = !prev;
-      return !prev;
-    });
-  };
+          const dist = Math.sqrt((mouseX - screen.x) ** 2 + (mouseY - screen.y) ** 2);
+          if (dist < displayRadius + 10) {
+            found = body.name;
+            break;
+          }
+        }
+        setHoveredBody(found);
+      }
+    },
+    [isDragging, dragStart, worldToScreen]
+  );
 
-  const centerSun = () => {
-    stateRef.current.camera.x = 0;
-    stateRef.current.camera.y = 0;
-  };
+  const handleMouseUp = useCallback(() => {
+    setIsDragging(false);
+  }, []);
 
-  const resetAll = () => {
-    const state = stateRef.current;
-    state.zoom = 1;
-    state.speed = initialSpeed;
-    state.camera.x = 0;
-    state.camera.y = 0;
-    state.focus = 'Sun';
-    state.paused = false;
-    state.lastFrameMs = 0;
-    setZoom(1);
-    setSpeed(initialSpeed);
-    setFocus('Sun');
-    setPaused(false);
-    fitAll();
-  };
-
-  const toggleFullscreen = () => {
-    const wrap = wrapRef.current;
-    if (!wrap) return;
-    const active = getFullscreenElement() === wrap;
-    if (!active) {
-      void requestElementFullscreen(wrap);
-    } else {
-      void exitFullscreen();
+  const handleClick = useCallback(() => {
+    if (hoveredBody) {
+      setFocusedBody(hoveredBody);
+      const body = BODIES.find((b) => b.name === hoveredBody);
+      if (body) {
+        if (body.type === "star") setZoom(2);
+        else if (body.semiMajorAxis < 2) setZoom(8);
+        else if (body.semiMajorAxis < 10) setZoom(2);
+        else setZoom(0.5);
+      }
     }
-  };
+  }, [hoveredBody]);
 
-  const info = useMemo(() => {
-    const body = bodyByName(focus) ?? BODIES[0];
-    return {
-      title: body.name,
-      isStar: body.type === 'star',
-      radius: body.radius_km,
-      sma: body.sma_au,
-      periodYears: body.period_days === Number.POSITIVE_INFINITY ? null : body.period_days / 365.25
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      const key = e.key.toLowerCase();
+
+      if (key >= "0" && key <= "9") {
+        const index = key === "0" ? 0 : parseInt(key);
+        if (index < BODIES.length) {
+          setFocusedBody(BODIES[index].name);
+        }
+      }
+
+      switch (key) {
+        case " ":
+          e.preventDefault();
+          setIsPaused((p) => !p);
+          break;
+        case "f":
+          setZoom(0.15);
+          setOffset({ x: 0, y: 0 });
+          setFocusedBody(null);
+          break;
+        case "o":
+          setShowOrbits((s) => !s);
+          break;
+        case "l":
+          setShowLabels((s) => !s);
+          break;
+        case "escape":
+          setFocusedBody(null);
+          break;
+        case "+":
+        case "=":
+          setSpeed((s) => Math.min(100, s * 1.5));
+          break;
+        case "-":
+          setSpeed((s) => Math.max(0.01, s / 1.5));
+          break;
+      }
     };
-  }, [BODIES, bodyByName, focus]);
 
-  const zoomDescriptor = useMemo(() => formatZoom(zoom), [zoom]);
-  const speedDescriptor = useMemo(() => formatSpeed(speed), [speed]);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, []);
+
+  const toggleFullscreen = useCallback(() => {
+    if (!document.fullscreenElement) {
+      containerRef.current?.requestFullscreen();
+      setIsFullscreen(true);
+    } else {
+      document.exitFullscreen();
+      setIsFullscreen(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    const handleFullscreenChange = () => {
+      setIsFullscreen(!!document.fullscreenElement);
+    };
+    document.addEventListener("fullscreenchange", handleFullscreenChange);
+    return () => document.removeEventListener("fullscreenchange", handleFullscreenChange);
+  }, []);
+
+  const selectedBody = focusedBody ? BODIES.find((b) => b.name === focusedBody) : null;
 
   return (
     <div
-      ref={wrapRef}
-      className={`ss-root ${className ?? ''}`}
-      style={{ ...rootStyle, height, ...style }}
+      ref={containerRef}
+      className="ss-container"
+      style={{ height, position: "relative", overflow: "hidden", background: "#000" }}
     >
       <canvas
         ref={canvasRef}
-        className="ss-canvas"
-        role="img"
-        aria-label="Solar system visualization"
+        width={dimensions.width}
+        height={dimensions.height}
+        style={{ cursor: hoveredBody ? "pointer" : isDragging ? "grabbing" : "grab" }}
+        onWheel={handleWheel}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        onClick={handleClick}
       />
 
-      <div className="ss-hud">
-        <div className={`ss-panel${controlsCollapsed ? ' ss-panel--collapsed' : ''}`}>
-          <div className="ss-brand">
-            <div className="ss-brand-left">
-              <div className="ss-dot" />
-              <div>
-                <h1 className="ss-h1">Solar System Scale</h1>
-                <div className="ss-sub">
-                  Pan (drag), Zoom (scroll), Select a planet or press <span className="ss-kbd">Space</span>{' '}
-                  to pause.
-                </div>
-              </div>
-            </div>
-            <button
-              type="button"
-              className="ss-collapse"
-              onClick={() => setControlsCollapsed((prev) => !prev)}
-              aria-expanded={!controlsCollapsed}
-              aria-controls="ss-controls"
-            >
-              {controlsCollapsed ? 'Show controls' : 'Hide controls'}
-            </button>
-          </div>
-
-          {!controlsCollapsed && (
-            <>
-              <div className="ss-controls" id="ss-controls">
-                <label htmlFor="ss-zoom">Zoom</label>
-                <div className="ss-sliderwrap">
-                  <input
-                    id="ss-zoom"
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={zoomToSlider(zoom)}
-                    onChange={(event) => handleZoomSlider(event.target.value)}
-                  />
-                  <div className="ss-meta" aria-live="polite">
-                    {zoomDescriptor}
-                  </div>
-                </div>
-
-                <label htmlFor="ss-speed">Orbital speed</label>
-                <div className="ss-sliderwrap">
-                  <input
-                    id="ss-speed"
-                    type="range"
-                    min="0"
-                    max="100"
-                    step="1"
-                    value={speedToSlider(speed)}
-                    onChange={(event) => handleSpeedSlider(event.target.value)}
-                  />
-                  <div className="ss-meta" aria-live="polite">
-                    {speedDescriptor}
-                  </div>
-                </div>
-              </div>
-
-              <div className="ss-chiplist">
-                {BODIES.map((body) => (
-                  <button
-                    key={body.name}
-                    className="ss-chip"
-                    aria-current={focus === body.name}
-                    onClick={() => focusBody(body.name, true)}
-                    type="button"
-                  >
-                    {body.name}
-                  </button>
-                ))}
-              </div>
-
-              <div className="ss-legend">
-                Scale is fixed to real radii and orbital distances, with orbits following true
-                eccentricities and perihelion angles. Use the deep zoom range and adaptive speed to
-                inspect inner planets without distorting proportions. Press <span className="ss-kbd">F</span>
-                to fit everything.
-              </div>
-            </>
-          )}
-          {controlsCollapsed && (
-            <div className="ss-collapsed-hint">
-              Controls hidden · show them to adjust zoom depth and orbital speed.
-            </div>
-          )}
+      <div className="ss-controls">
+        <div className="ss-control-group">
+          <label>Speed: {speed.toFixed(2)} days/frame</label>
+          <input
+            type="range"
+            min="-2"
+            max="2"
+            step="0.1"
+            value={Math.log10(speed)}
+            onChange={(e) => setSpeed(Math.pow(10, parseFloat(e.target.value)))}
+          />
         </div>
 
-        <div className="ss-panel ss-right">
-          <div className="ss-info">
+        <div className="ss-control-group">
+          <label>Zoom: {zoom.toFixed(2)}x</label>
+          <input
+            type="range"
+            min="-1.3"
+            max="1.7"
+            step="0.05"
+            value={Math.log10(zoom)}
+            onChange={(e) => setZoom(Math.pow(10, parseFloat(e.target.value)))}
+          />
+        </div>
+
+        <div className="ss-buttons">
+          <button onClick={() => setIsPaused((p) => !p)} title="Space to toggle">
+            {isPaused ? "Play" : "Pause"}
+          </button>
+          <button onClick={() => setShowOrbits((s) => !s)} title="O to toggle">
+            {showOrbits ? "Hide Orbits" : "Show Orbits"}
+          </button>
+          <button onClick={() => setShowLabels((s) => !s)} title="L to toggle">
+            {showLabels ? "Hide Labels" : "Show Labels"}
+          </button>
+          <button onClick={toggleFullscreen}>
+            {isFullscreen ? "Exit Fullscreen" : "Fullscreen"}
+          </button>
+          <button onClick={() => { setZoom(0.15); setOffset({ x: 0, y: 0 }); setFocusedBody(null); }} title="F to fit">
+            Fit System
+          </button>
+        </div>
+      </div>
+
+      <div className="ss-planet-chips">
+        {BODIES.map((body, idx) => (
+          <button
+            key={body.name}
+            className={"ss-chip" + (focusedBody === body.name ? " ss-chip--active" : "")}
+            onClick={() => {
+              setFocusedBody(body.name);
+              if (body.type === "star") setZoom(2);
+              else if (body.semiMajorAxis < 2) setZoom(8);
+              else if (body.semiMajorAxis < 10) setZoom(2);
+              else setZoom(0.5);
+            }}
+            title={"Press " + idx + " to select"}
+          >
+            <span className="ss-chip-dot" style={{ background: body.color }} />
+            {body.name}
+          </button>
+        ))}
+      </div>
+
+      {selectedBody && (
+        <div className="ss-info-panel">
+          <h3 style={{ color: selectedBody.color }}>{selectedBody.name}</h3>
+          <p className="ss-info-desc">{selectedBody.description}</p>
+          <div className="ss-info-stats">
             <div>
-              <b>{info.title}</b> {info.isStar ? '• Star' : '• Planet'}
+              <span>Radius:</span>
+              <strong>{selectedBody.radius.toLocaleString()} km</strong>
             </div>
-            {info.isStar ? (
-              <div>
-                Mean radius: <b>{formatKM(info.radius)}</b>
-              </div>
-            ) : (
+            {selectedBody.semiMajorAxis > 0 && (
               <>
                 <div>
-                  Mean distance: <b>{info.sma.toFixed(3)} AU</b>
+                  <span>Distance:</span>
+                  <strong>{selectedBody.semiMajorAxis.toFixed(3)} AU</strong>
                 </div>
                 <div>
-                  Mean radius: <b>{formatKM(info.radius)}</b>
+                  <span>Orbital Period:</span>
+                  <strong>{(selectedBody.orbitalPeriod / 365.25).toFixed(2)} years</strong>
                 </div>
                 <div>
-                  Orbital period: <b>{info.periodYears?.toFixed(2)} years</b>
+                  <span>Eccentricity:</span>
+                  <strong>{selectedBody.eccentricity.toFixed(4)}</strong>
                 </div>
               </>
             )}
-            <div className="ss-tip">
-              Tip: <span className="ss-kbd">1</span>…<span className="ss-kbd">9</span> to jump;{' '}
-              <span className="ss-kbd">Space</span> pause.
-            </div>
+            {selectedBody.moons !== undefined && (
+              <div>
+                <span>Known Moons:</span>
+                <strong>{selectedBody.moons}</strong>
+              </div>
+            )}
+            {selectedBody.atmosphere && (
+              <div>
+                <span>Atmosphere:</span>
+                <strong>{selectedBody.atmosphere}</strong>
+              </div>
+            )}
           </div>
+          {selectedBody.surfaceFeatures && (
+            <div className="ss-info-features">
+              <span>Notable features:</span>
+              <ul>
+                {selectedBody.surfaceFeatures.map((f) => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+            </div>
+          )}
+          <button className="ss-info-close" onClick={() => setFocusedBody(null)}>
+            Close
+          </button>
         </div>
+      )}
+
+      <div className="ss-time">
+        <span>Day {Math.floor(time).toLocaleString()}</span>
+        <span className="ss-time-hint">since J2000 epoch</span>
       </div>
 
-      <div className="ss-footer">
-        <div className="ss-panel">
-          © {new Date().getFullYear()} visualize.cool · Mean radii & semi-major axes; circular,
-          coplanar orbits for clarity.
-        </div>
-        <div className="ss-row">
-          <button
-            className="ss-btn"
-            onClick={toggleFullscreen}
-            type="button"
-            aria-pressed={isFullscreen}
-            title={isFullscreen ? 'Exit fullscreen view' : 'Enter fullscreen view'}
-          >
-            {isFullscreen ? 'Exit fullscreen' : 'Fullscreen'}
-          </button>
-          <button className="ss-btn" onClick={fitAll} type="button">
-            Fit all
-          </button>
-          <button className="ss-btn" onClick={centerSun} type="button">
-            Center Sun
-          </button>
-          <button className="ss-btn" onClick={resetAll} type="button">
-            Reset
-          </button>
-          <button className="ss-btn" onClick={togglePause} type="button">
-            {paused ? 'Resume' : 'Pause'}
-          </button>
-        </div>
+      <div className="ss-hints">
+        <span>Space: pause</span>
+        <span>0-9: planets</span>
+        <span>F: fit</span>
+        <span>O: orbits</span>
+        <span>+/-: speed</span>
       </div>
 
-      <style>{css}</style>
+      <style jsx>{`
+        .ss-container {
+          font-family: system-ui, -apple-system, sans-serif;
+          color: #fff;
+        }
+
+        .ss-controls {
+          position: absolute;
+          top: 12px;
+          left: 12px;
+          background: rgba(10, 15, 30, 0.85);
+          backdrop-filter: blur(10px);
+          border-radius: 12px;
+          padding: 16px;
+          display: flex;
+          flex-direction: column;
+          gap: 12px;
+          min-width: 200px;
+          border: 1px solid rgba(100, 120, 180, 0.3);
+        }
+
+        .ss-control-group {
+          display: flex;
+          flex-direction: column;
+          gap: 6px;
+        }
+
+        .ss-control-group label {
+          font-size: 12px;
+          color: rgba(255, 255, 255, 0.7);
+        }
+
+        .ss-control-group input[type="range"] {
+          width: 100%;
+          height: 6px;
+          border-radius: 3px;
+          background: rgba(100, 120, 180, 0.3);
+          appearance: none;
+          cursor: pointer;
+        }
+
+        .ss-control-group input[type="range"]::-webkit-slider-thumb {
+          appearance: none;
+          width: 16px;
+          height: 16px;
+          border-radius: 50%;
+          background: #6B93D6;
+          cursor: pointer;
+        }
+
+        .ss-buttons {
+          display: flex;
+          flex-wrap: wrap;
+          gap: 6px;
+        }
+
+        .ss-buttons button {
+          background: rgba(100, 120, 180, 0.2);
+          border: 1px solid rgba(100, 120, 180, 0.4);
+          color: #fff;
+          padding: 6px 10px;
+          border-radius: 6px;
+          font-size: 11px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .ss-buttons button:hover {
+          background: rgba(100, 120, 180, 0.4);
+          border-color: rgba(100, 120, 180, 0.6);
+        }
+
+        .ss-planet-chips {
+          position: absolute;
+          bottom: 12px;
+          left: 50%;
+          transform: translateX(-50%);
+          display: flex;
+          gap: 8px;
+          flex-wrap: wrap;
+          justify-content: center;
+          max-width: calc(100% - 24px);
+        }
+
+        .ss-chip {
+          display: flex;
+          align-items: center;
+          gap: 6px;
+          background: rgba(10, 15, 30, 0.8);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(100, 120, 180, 0.3);
+          color: #fff;
+          padding: 6px 12px;
+          border-radius: 20px;
+          font-size: 12px;
+          cursor: pointer;
+          transition: all 0.2s;
+        }
+
+        .ss-chip:hover {
+          background: rgba(30, 40, 70, 0.9);
+          border-color: rgba(100, 120, 180, 0.6);
+        }
+
+        .ss-chip--active {
+          background: rgba(60, 80, 140, 0.8);
+          border-color: rgba(130, 160, 220, 0.8);
+        }
+
+        .ss-chip-dot {
+          width: 10px;
+          height: 10px;
+          border-radius: 50%;
+        }
+
+        .ss-info-panel {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          background: rgba(10, 15, 30, 0.9);
+          backdrop-filter: blur(10px);
+          border-radius: 12px;
+          padding: 20px;
+          width: 280px;
+          border: 1px solid rgba(100, 120, 180, 0.3);
+        }
+
+        .ss-info-panel h3 {
+          margin: 0 0 8px;
+          font-size: 20px;
+        }
+
+        .ss-info-desc {
+          font-size: 13px;
+          color: rgba(255, 255, 255, 0.8);
+          margin: 0 0 16px;
+          line-height: 1.5;
+        }
+
+        .ss-info-stats {
+          display: flex;
+          flex-direction: column;
+          gap: 8px;
+        }
+
+        .ss-info-stats > div {
+          display: flex;
+          justify-content: space-between;
+          font-size: 12px;
+        }
+
+        .ss-info-stats span {
+          color: rgba(255, 255, 255, 0.6);
+        }
+
+        .ss-info-stats strong {
+          color: #fff;
+        }
+
+        .ss-info-features {
+          margin-top: 12px;
+          font-size: 12px;
+        }
+
+        .ss-info-features span {
+          color: rgba(255, 255, 255, 0.6);
+        }
+
+        .ss-info-features ul {
+          margin: 6px 0 0;
+          padding-left: 16px;
+        }
+
+        .ss-info-features li {
+          color: rgba(255, 255, 255, 0.9);
+          margin: 2px 0;
+        }
+
+        .ss-info-close {
+          position: absolute;
+          top: 12px;
+          right: 12px;
+          background: none;
+          border: none;
+          color: rgba(255, 255, 255, 0.5);
+          font-size: 14px;
+          cursor: pointer;
+          padding: 4px;
+        }
+
+        .ss-info-close:hover {
+          color: #fff;
+        }
+
+        .ss-time {
+          position: absolute;
+          top: 12px;
+          left: 50%;
+          transform: translateX(-50%);
+          background: rgba(10, 15, 30, 0.8);
+          backdrop-filter: blur(10px);
+          border-radius: 8px;
+          padding: 8px 16px;
+          border: 1px solid rgba(100, 120, 180, 0.3);
+          text-align: center;
+        }
+
+        .ss-time span:first-child {
+          font-size: 14px;
+          font-weight: 600;
+        }
+
+        .ss-time-hint {
+          display: block;
+          font-size: 10px;
+          color: rgba(255, 255, 255, 0.5);
+          margin-top: 2px;
+        }
+
+        .ss-hints {
+          position: absolute;
+          bottom: 60px;
+          left: 12px;
+          display: flex;
+          flex-direction: column;
+          gap: 2px;
+          font-size: 10px;
+          color: rgba(255, 255, 255, 0.4);
+        }
+
+        @media (max-width: 768px) {
+          .ss-controls {
+            min-width: 160px;
+            padding: 12px;
+          }
+
+          .ss-info-panel {
+            width: 240px;
+            padding: 16px;
+          }
+
+          .ss-planet-chips {
+            bottom: 8px;
+          }
+
+          .ss-chip {
+            padding: 4px 8px;
+            font-size: 10px;
+          }
+
+          .ss-hints {
+            display: none;
+          }
+        }
+      `}</style>
     </div>
   );
 }
-
-function clamp(x: number, min: number, max: number) {
-  return Math.max(min, Math.min(max, x));
-}
-
-function lerp(a: number, b: number, t: number) {
-  return a + (b - a) * t;
-}
-
-function rand(a: number, b: number) {
-  return a + Math.random() * (b - a);
-}
-
-function formatKM(n: number) {
-  return `${Math.round(n).toLocaleString()} km`;
-}
-
-function formatNumber(n: number) {
-  if (n >= 1000) return n.toFixed(0);
-  if (n >= 10) return n.toFixed(1);
-  return n.toFixed(2);
-}
-
-function sliderToZoom(slider: number) {
-  const t = Math.pow(clamp(slider / 100, 0, 1), ZOOM_SLIDER_EXP);
-  const ratio = Math.pow(ZOOM_MAX / ZOOM_MIN, t);
-  return clamp(ZOOM_MIN * ratio, ZOOM_MIN, ZOOM_MAX);
-}
-
-function zoomToSlider(zoom: number) {
-  const safeZoom = clamp(zoom, ZOOM_MIN, ZOOM_MAX);
-  const totalRatio = ZOOM_MAX / ZOOM_MIN;
-  const ratio = safeZoom / ZOOM_MIN;
-  const t = Math.log(ratio) / Math.log(totalRatio || 10);
-  const slider = Math.pow(clamp(t, 0, 1), 1 / ZOOM_SLIDER_EXP) * 100;
-  return Math.round(slider);
-}
-
-function formatZoom(z: number) {
-  if (z >= 1000) return `${Math.round(z).toLocaleString()}× zoom`;
-  if (z >= 10) return `${z.toFixed(1)}× zoom`;
-  if (z >= 1) return `${z.toFixed(2)}× zoom`;
-  return `${z.toFixed(3)}× zoom`;
-}
-
-function formatSpeed(daysPerSecond: number) {
-  if (daysPerSecond <= 0) return 'Paused';
-  if (daysPerSecond >= 365) {
-    return `${formatNumber(daysPerSecond / 365)} years per second`;
-  }
-  if (daysPerSecond >= 1) {
-    return `${formatNumber(daysPerSecond)} days per second`;
-  }
-  const secondsPerDay = 1 / daysPerSecond;
-  if (secondsPerDay < 60) {
-    return `1 day every ${secondsPerDay.toFixed(0)} sec`;
-  }
-  const minutesPerDay = secondsPerDay / 60;
-  if (minutesPerDay < 60) {
-    return `1 day every ${minutesPerDay.toFixed(1)} min`;
-  }
-  const hoursPerDay = minutesPerDay / 60;
-  if (hoursPerDay < 48) {
-    return `1 day every ${hoursPerDay.toFixed(2)} hr`;
-  }
-  const daysReal = hoursPerDay / 24;
-  if (daysReal < 365) {
-    return `1 day every ${daysReal.toFixed(1)} days`;
-  }
-  const yearsReal = daysReal / 365;
-  return `1 day every ${yearsReal.toFixed(2)} years`;
-}
-
-function sliderToSpeed(slider: number) {
-  const t = clamp(slider / 100, 0, 1);
-  const eased = Math.pow(t, 3.2);
-  return Math.round(eased * SPEED_MAX);
-}
-
-function speedToSlider(speed: number) {
-  const t = clamp(speed, SPEED_MIN, SPEED_MAX) / SPEED_MAX;
-  const slider = Math.pow(t, 1 / 3.2);
-  return Math.round(slider * 100);
-}
-
-function toRadians(deg: number) {
-  return (deg * Math.PI) / 180;
-}
-
-function normalizeAngle(angle: number) {
-  let a = angle % TAU;
-  if (a < 0) a += TAU;
-  return a;
-}
-
-function solveKepler(meanAnomaly: number, eccentricity: number) {
-  const m = normalizeAngle(meanAnomaly);
-  let e = eccentricity;
-  if (e === 0) return m;
-  let E = e < 0.8 ? m : Math.PI;
-  for (let i = 0; i < 12; i++) {
-    const f = E - e * Math.sin(E) - m;
-    const fPrime = 1 - e * Math.cos(E);
-    const delta = f / fPrime;
-    E -= delta;
-    if (Math.abs(delta) < 1e-8) break;
-  }
-  return E;
-}
-
-function getFullscreenElement(): Element | null {
-  const doc = document as Document & { webkitFullscreenElement?: Element | null };
-  return document.fullscreenElement ?? doc.webkitFullscreenElement ?? null;
-}
-
-function requestElementFullscreen(element: HTMLElement) {
-  if (element.requestFullscreen) {
-    return element.requestFullscreen();
-  }
-  const anyElement = element as HTMLElement & { webkitRequestFullscreen?: () => void };
-  if (anyElement.webkitRequestFullscreen) {
-    anyElement.webkitRequestFullscreen();
-  }
-  return Promise.resolve();
-}
-
-function exitFullscreen() {
-  if (document.exitFullscreen) {
-    return document.exitFullscreen();
-  }
-  const doc = document as Document & { webkitExitFullscreen?: () => void };
-  if (doc.webkitExitFullscreen) {
-    doc.webkitExitFullscreen();
-  }
-  return Promise.resolve();
-}
-
-const rootStyle: React.CSSProperties = {
-  position: 'relative',
-  width: '100%',
-  overflow: 'hidden',
-  borderRadius: '24px',
-  border: '1px solid rgba(255,255,255,0.06)',
-  boxShadow: '0 18px 36px rgba(0,0,0,0.4)'
-};
-
-const css = `
-.ss-root {
-  --bg: #0b0f1a; --panel: rgba(20,24,37,0.82); --text: #e8ecf1; --muted: #a7b1c2;
-  --accent: #6ae3ff; --accent2: #b084ff; --border: rgba(255,255,255,0.08);
-  --shadow: 0 10px 30px rgba(0,0,0,0.35); --radius: 14px;
-  background:
-    radial-gradient(1200px 800px at 80% -10%, #14203c 0%, rgba(20,32,60,0) 60%),
-    radial-gradient(900px 600px at 10% 110%, #26153b 0%, rgba(38,21,59,0) 55%),
-    var(--bg);
-  color: var(--text);
-}
-.ss-canvas { position: absolute; inset: 0; display: block; background: transparent; }
-.ss-hud { position: absolute; top: 16px; left: 16px; right: 16px; display:flex; gap:16px; align-items:flex-start; pointer-events:none; flex-wrap:wrap; }
-.ss-panel {
-  pointer-events:auto; background:var(--panel); border:1px solid var(--border);
-  box-shadow:var(--shadow); border-radius: var(--radius); padding: 12px 14px;
-  backdrop-filter: blur(8px) saturate(120%);
-  width: min(100%, 320px);
-}
-.ss-panel--collapsed { padding: 10px 12px; width: auto; }
-.ss-right { margin-left:auto; max-width:300px; }
-.ss-brand { display:flex; align-items:flex-start; gap:12px; justify-content:space-between; }
-.ss-brand-left { display:flex; align-items:center; gap:10px; }
-.ss-dot { width:10px; height:10px; border-radius:50%; background: linear-gradient(180deg, var(--accent), var(--accent2)); box-shadow: 0 0 12px rgba(106,227,255,0.7); }
-.ss-h1 { font-size:16px; font-weight:600; margin:0; }
-.ss-sub { font-size:12px; color:var(--muted); margin-top:4px; }
-.ss-collapse {
-  border:1px solid rgba(255,255,255,0.14); border-radius:999px; padding:4px 10px;
-  background:rgba(255,255,255,0.06); color:var(--text); font-size:11px;
-  letter-spacing:0.04em; text-transform:uppercase; cursor:pointer;
-  transition:background 0.2s ease, border-color 0.2s ease;
-}
-.ss-collapse:hover { background:rgba(106,227,255,0.14); border-color:rgba(106,227,255,0.35); }
-.ss-collapsed-hint { font-size:12px; color:var(--muted); margin-top:10px; }
-.ss-controls { display:grid; grid-template-columns: 1fr; gap:10px; margin-top:10px; align-items:start; }
-.ss-controls label { font-size:12px; color:var(--muted); }
-.ss-controls input[type="range"] { width:100%; max-width:240px; accent-color: var(--accent); }
-.ss-row { display:flex; gap:10px; align-items:center; }
-.ss-sliderwrap { display:grid; gap:6px; }
-.ss-meta { font-size:11px; color:rgba(240,244,255,0.65); letter-spacing:0.04em; text-transform:uppercase; }
-.ss-chiplist { display:flex; flex-wrap:wrap; gap:8px; margin-top:8px; max-width:560px; }
-.ss-chip {
-  padding:6px 10px; border-radius:999px; font-size:12px; border:1px solid var(--border);
-  background: rgba(255,255,255,0.05); cursor:pointer; user-select:none; color:var(--text);
-}
-.ss-chip[aria-current="true"] { background: linear-gradient(90deg, rgba(106,227,255,0.15), rgba(176,132,255,0.15)); border-color:rgba(255,255,255,0.18) }
-.ss-kbd { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; padding:1px 6px; border-radius:6px; border:1px solid var(--border); }
-.ss-legend { font-size:12px; color:var(--muted); margin-top:8px; }
-.ss-info { font-size:13px; display:grid; gap:6px; }
-.ss-info b { color:#fff; }
-.ss-tip { margin-top:6px; color:var(--muted); }
-.ss-footer {
-  position:absolute; left:16px; right:16px; bottom:16px; display:flex; align-items:center; justify-content:space-between;
-}
-.ss-btn {
-  appearance:none; border:1px solid var(--border); background: rgba(255,255,255,0.05);
-  color:var(--text); padding:8px 12px; border-radius:10px; cursor:pointer; font-size:12px;
-}
-.ss-btn[aria-pressed="true"] {
-  background: rgba(106,227,255,0.12);
-  border-color: rgba(106,227,255,0.35);
-}
-@media (max-width: 840px) {
-  .ss-controls { grid-template-columns: 1fr; }
-  .ss-right { display:none; }
-  .ss-footer { flex-direction: column; align-items: stretch; gap: 12px; }
-  .ss-row { justify-content: space-between; }
-}
-`;
