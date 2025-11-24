@@ -6,6 +6,7 @@ const routes = [
   "",
   "/visualizations",
   "/visualizations/solar-system",
+  "/visualizations/planet-size-comparison",
   // "/visualizations/gpt-architecture",
   "/search",
   "/about",

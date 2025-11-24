@@ -9,6 +9,13 @@ const visualizations = [
       "Beautiful, responsive tour of our solar system with true-to-scale bodies, deep zoom, and adaptive orbital speeds.",
     href: "/visualizations/solar-system"
   },
+  {
+    slug: "planet-size-comparison",
+    title: "Planet Size Comparison",
+    description:
+      "Scroll through an interactive visualization comparing the true sizes of planets, from tiny Pluto to the massive Sun.",
+    href: "/visualizations/planet-size-comparison"
+  },
   // {
   //   slug: "gpt-architecture",
   //   title: "GPT Architecture Visualizer",
